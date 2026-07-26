@@ -2,7 +2,7 @@
 
 set -eu
 
-version="${GRAPE_VERSION:-0.1.1}"
+version="${GRAPE_VERSION:-0.1.2}"
 repository="version-1/grape"
 
 case "$(uname -s)-$(uname -m)" in
