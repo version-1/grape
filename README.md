@@ -22,15 +22,25 @@ make build
 The `0.1.0` release provides a macOS arm64 binary. Install it under `~/.local/bin` with the GitHub CLI:
 
 ```sh
-mkdir -p "$HOME/.local/bin"
-gh release download 0.1.0 --repo version-1/grape --pattern gw_0.1.0_darwin_arm64 --dir "$HOME/.local/bin"
-mv "$HOME/.local/bin/gw_0.1.0_darwin_arm64" "$HOME/.local/bin/gw"
-chmod +x "$HOME/.local/bin/gw"
+set -e
+install_dir="$HOME/.local/bin"
+asset="gw_0.1.0_darwin_arm64"
+mkdir -p "$install_dir"
+if [ -e "$install_dir/gw" ]; then
+  echo "Refusing to overwrite $install_dir/gw" >&2
+  exit 1
+fi
+gh release download 0.1.0 --repo version-1/grape --pattern "$asset" --dir "$install_dir" --skip-existing
+mv "$install_dir/$asset" "$install_dir/gw"
+chmod +x "$install_dir/gw"
 ```
 
-Ensure `~/.local/bin` is on your `PATH`. For zsh:
+Add `~/.local/bin` to your zsh `PATH` persistently:
 
 ```sh
+if ! grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.zshrc"; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
