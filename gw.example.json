@@ -1,0 +1,30 @@
+{
+  "default_branch": "main",
+  "worktrees": [
+    {
+      "path": ".worktrees/1",
+      "branch": "worktrees/1",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/2",
+      "branch": "worktrees/2",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/3",
+      "branch": "worktrees/3",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/4",
+      "branch": "worktrees/4",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/5",
+      "branch": "worktrees/5",
+      "start_point": "origin/main"
+    }
+  ]
+}
