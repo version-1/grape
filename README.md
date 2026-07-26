@@ -1,6 +1,6 @@
-# gw
+# grape
 
-`gw` is a Go CLI for `git worktree` workflows.
+`grape` is a Go CLI for `git worktree` workflows.
 
 It wraps `git worktree` and adds formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
@@ -24,7 +24,7 @@ The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/15d9f8ca7f96ebfd16a187879a81167d0b1ea073/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/aa71316a5da0dd1bf442c6ec62e51e51bbf28d57/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
@@ -53,12 +53,12 @@ export PATH="$HOME/.local/bin:$PATH"
 
 | Command | Description |
 | --- | --- |
-| `gw list` | Show worktree path, branch, and HEAD in a colored table. |
-| `gw branch <branch-name>` | Show worktrees that reference the given local branch. |
-| `gw remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
-| `gw remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
-| `gw reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
-| `gw help` | Show command help. |
+| `grape list` | Show worktree path, branch, and HEAD in a colored table. |
+| `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
+| `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
+| `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
+| `grape reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
+| `grape help` | Show command help. |
 
 Unknown commands are delegated to `git worktree`.
 
@@ -69,12 +69,12 @@ go run ./cmd/gw list --porcelain
 
 ## Reset Config
 
-`gw reset` reads `gw.json` by default.
+`grape reset` reads `gw.json` by default.
 
-`gw reset` never removes the main working tree or the branch checked out by the main working tree.
-Before deleting anything, `gw reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
+`grape reset` never removes the main working tree or the branch checked out by the main working tree.
+Before deleting anything, `grape reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
 
-`gw remove` also prints its matching worktrees and branches, then continues only after `y` or `yes` confirmation.
+`grape remove` also prints its matching worktrees and branches, then continues only after `y` or `yes` confirmation.
 
 Config path resolution:
 

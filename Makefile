@@ -1,4 +1,4 @@
-BINARY := gw
+BINARY := grape
 BIN_DIR := bin
 CMD := ./cmd/gw
 

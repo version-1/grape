@@ -130,7 +130,7 @@ func TestRunWritesUnexpectedErrors(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if got, want := stderr.String(), "gw: failed\n"; got != want {
+	if got, want := stderr.String(), "grape: failed\n"; got != want {
 		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
@@ -146,7 +146,7 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	assertContains(t, stdout.String(), "Usage:")
-	assertContains(t, stdout.String(), "gw reset [--config|-c <path>]")
+	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
 	assertContains(t, stdout.String(), "$GW_HOME/gw.json")
 	if runner.args != nil {
 		t.Fatalf("runner args = %#v, want nil", runner.args)
@@ -163,7 +163,7 @@ func TestRunHelpFlagShowsInternalHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	assertContains(t, stdout.String(), "gw is a Go CLI")
+	assertContains(t, stdout.String(), "grape is a Go CLI")
 	if runner.args != nil {
 		t.Fatalf("runner args = %#v, want nil", runner.args)
 	}
@@ -288,9 +288,9 @@ func TestRunRemoveCancelsWithoutConfirmation(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	assertContains(t, stdout.String(), "gw remove will delete:")
+	assertContains(t, stdout.String(), "grape remove will delete:")
 	assertContains(t, stdout.String(), "/repo-feature")
-	assertContains(t, stdout.String(), "gw: removal cancelled")
+	assertContains(t, stdout.String(), "grape: removal cancelled")
 	if len(client.removed) != 0 {
 		t.Fatalf("removed = %#v, want none", client.removed)
 	}
@@ -340,7 +340,7 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	assertContains(t, stdout.String(), "gw reset will delete:")
+	assertContains(t, stdout.String(), "grape reset will delete:")
 	assertContains(t, stdout.String(), "/repo-feature")
 	assertContains(t, stdout.String(), "feature/orphan")
 	if !slices.Equal(client.removed, []string{"/repo-feature", "/repo-detached"}) {
@@ -385,8 +385,8 @@ func TestRunResetCancelsWhenConfirmationIsNotYes(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	assertContains(t, stdout.String(), "gw reset will delete:")
-	assertContains(t, stdout.String(), "gw: reset cancelled")
+	assertContains(t, stdout.String(), "grape reset will delete:")
+	assertContains(t, stdout.String(), "grape: reset cancelled")
 	if len(client.removed) != 0 {
 		t.Fatalf("removed = %#v, want none", client.removed)
 	}

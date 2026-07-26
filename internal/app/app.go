@@ -67,7 +67,7 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 		if exitErr, ok := err.(exitCodeError); ok {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(stderr, "gw: %v\n", err)
+		fmt.Fprintf(stderr, "grape: %v\n", err)
 		return 1
 	}
 	return 0
@@ -80,15 +80,15 @@ func (a App) runHelp(stdout io.Writer) int {
 
 func helpText() string {
 	return strings.TrimLeft(`
-gw is a Go CLI for git worktree workflows.
+grape is a Go CLI for git worktree workflows.
 
 Usage:
-  gw
-  gw list
-  gw branch <branch-name>
-  gw remove [--regex|-r] <path-prefix-or-pattern>
-  gw reset [--config|-c <path>]
-  gw help
+  grape
+  grape list
+  grape branch <branch-name>
+  grape remove [--regex|-r] <path-prefix-or-pattern>
+  grape reset [--config|-c <path>]
+  grape help
 
 Commands:
   list      Show worktree path, branch, and HEAD in a colored table.
@@ -98,7 +98,7 @@ Commands:
   help      Show this help.
 
 Config:
-  gw reset reads config in this order when --config is omitted:
+  grape reset reads config in this order when --config is omitted:
     1. ./gw.json
     2. $GW_HOME/gw.json
     3. ~/.gw/gw.json
@@ -115,7 +115,7 @@ Unknown commands are delegated to git worktree.
 func (a App) runList(ctx context.Context, stdout io.Writer, stderr io.Writer) int {
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("gw:", ui.Red, ui.Bold), err)
+		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("grape:", ui.Red, ui.Bold), err)
 		return 1
 	}
 	if len(worktrees) == 0 {
@@ -129,14 +129,14 @@ func (a App) runList(ctx context.Context, stdout io.Writer, stderr io.Writer) in
 
 func (a App) runBranch(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprintf(stderr, "%s usage: gw branch <branch-name>\n", ui.Paint("gw:", ui.Red, ui.Bold))
+		fmt.Fprintf(stderr, "%s usage: grape branch <branch-name>\n", ui.Paint("grape:", ui.Red, ui.Bold))
 		return 2
 	}
 
 	branch := worktree.NormalizeBranchName(args[0])
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("gw:", ui.Red, ui.Bold), err)
+		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("grape:", ui.Red, ui.Bold), err)
 		return 1
 	}
 
@@ -167,7 +167,7 @@ func parseRemoveOptions(args []string) (removeOptions, error) {
 		return removeOptions{}, err
 	}
 	if flags.NArg() != 1 {
-		return removeOptions{}, errors.New("usage: gw remove [--regex|-r] <path-prefix-or-pattern>")
+		return removeOptions{}, errors.New("usage: grape remove [--regex|-r] <path-prefix-or-pattern>")
 	}
 	return removeOptions{
 		Pattern: flags.Arg(0),
@@ -178,7 +178,7 @@ func parseRemoveOptions(args []string) (removeOptions, error) {
 func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	options, err := parseRemoveOptions(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: %v\n", err)
+		fmt.Fprintf(stderr, "grape: %v\n", err)
 		return 2
 	}
 
@@ -187,13 +187,13 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 		Regex:   options.Regex,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: %v\n", err)
+		fmt.Fprintf(stderr, "grape: %v\n", err)
 		return 2
 	}
 
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: list worktrees: %v\n", err)
+		fmt.Fprintf(stderr, "grape: list worktrees: %v\n", err)
 		return 1
 	}
 
@@ -201,7 +201,7 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 		return !item.Main && matcher(item)
 	})
 	if len(targets) == 0 {
-		fmt.Fprintln(stdout, ui.Paint("gw: no matching worktrees", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint("grape: no matching worktrees", ui.Dim))
 		return 0
 	}
 	if !confirmRemove(stdin, stdout, targets) {
@@ -217,7 +217,7 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 }
 
 func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktree) bool {
-	fmt.Fprintln(stdout, ui.Paint("gw remove will delete:", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint("grape remove will delete:", ui.Red, ui.Bold))
 	fmt.Fprintln(stdout, ui.Paint("Worktrees", ui.Blue, ui.Bold))
 	fmt.Fprint(stdout, ui.FormatWorktreeList(targets))
 	fmt.Fprintln(stdout, ui.Paint("Branches", ui.Red, ui.Bold))
@@ -230,13 +230,13 @@ func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktre
 	fmt.Fprint(stdout, ui.Paint("Proceed with removal? [y/N] ", ui.Red, ui.Bold))
 	if stdin == nil {
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, ui.Paint("gw: removal cancelled", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint("grape: removal cancelled", ui.Dim))
 		return false
 	}
 
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("gw: read confirmation:", ui.Red, ui.Bold), err)
+		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("grape: read confirmation:", ui.Red, ui.Bold), err)
 		return false
 	}
 
@@ -245,7 +245,7 @@ func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktre
 		return true
 	}
 
-	fmt.Fprintln(stdout, ui.Paint("gw: removal cancelled", ui.Dim))
+	fmt.Fprintln(stdout, ui.Paint("grape: removal cancelled", ui.Dim))
 	return false
 }
 
@@ -256,14 +256,14 @@ type resetOptions struct {
 func parseResetOptions(args []string) (resetOptions, error) {
 	flags := flag.NewFlagSet("reset", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	configPath := flags.String("config", "", "path to gw reset config")
-	flags.StringVar(configPath, "c", "", "path to gw reset config")
+	configPath := flags.String("config", "", "path to grape reset config")
+	flags.StringVar(configPath, "c", "", "path to grape reset config")
 
 	if err := flags.Parse(args); err != nil {
 		return resetOptions{}, err
 	}
 	if flags.NArg() != 0 {
-		return resetOptions{}, errors.New("usage: gw reset [--config|-c <path>]")
+		return resetOptions{}, errors.New("usage: grape reset [--config|-c <path>]")
 	}
 	return resetOptions{ConfigPath: *configPath}, nil
 }
@@ -271,19 +271,19 @@ func parseResetOptions(args []string) (resetOptions, error) {
 func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	options, err := parseResetOptions(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: %v\n", err)
+		fmt.Fprintf(stderr, "grape: %v\n", err)
 		return 2
 	}
 
 	configPath, err := a.pathResolver.ResolveConfigPath(options.ConfigPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: resolve config: %v\n", err)
+		fmt.Fprintf(stderr, "grape: resolve config: %v\n", err)
 		return 2
 	}
 
 	resetConfig, err := config.ReadResetConfig(configPath, a.readFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: read config: %v\n", err)
+		fmt.Fprintf(stderr, "grape: read config: %v\n", err)
 		return 2
 	}
 
@@ -291,19 +291,19 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	if defaultBranch == "" {
 		defaultBranch, err = a.client.DefaultBranch(ctx)
 		if err != nil {
-			fmt.Fprintf(stderr, "gw: detect default branch: %v\n", err)
+			fmt.Fprintf(stderr, "grape: detect default branch: %v\n", err)
 			return 1
 		}
 	}
 	defaultBranch = worktree.NormalizeBranchName(defaultBranch)
 	if defaultBranch == "" {
-		fmt.Fprintln(stderr, "gw: default branch is empty")
+		fmt.Fprintln(stderr, "grape: default branch is empty")
 		return 2
 	}
 
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: list worktrees: %v\n", err)
+		fmt.Fprintf(stderr, "grape: list worktrees: %v\n", err)
 		return 1
 	}
 
@@ -323,7 +323,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 
 	branches, err := a.client.ListBranches(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "gw: list branches: %v\n", err)
+		fmt.Fprintf(stderr, "grape: list branches: %v\n", err)
 		return 1
 	}
 
@@ -358,7 +358,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	for _, item := range resetConfig.Worktrees {
 		fmt.Fprintf(stdout, "%s %s %s\n", ui.Paint("Adding worktree", ui.Green, ui.Bold), ui.Paint(item.Path, ui.Cyan), ui.Paint(item.Branch, ui.Green))
 		if err := a.client.AddWorktree(ctx, item, defaultBranch, stdout, stderr); err != nil {
-			fmt.Fprintf(stderr, "%s add worktree %s: %v\n", ui.Paint("gw:", ui.Red, ui.Bold), item.Path, err)
+			fmt.Fprintf(stderr, "%s add worktree %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), item.Path, err)
 			return 1
 		}
 	}
@@ -367,7 +367,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 }
 
 func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Worktree, deleteTargets []string) bool {
-	fmt.Fprintln(stdout, ui.Paint("gw reset will delete:", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint("grape reset will delete:", ui.Red, ui.Bold))
 	fmt.Fprintln(stdout, ui.Paint("Worktrees", ui.Blue, ui.Bold))
 	if len(removeTargets) == 0 {
 		fmt.Fprintln(stdout, ui.Paint("  (none)", ui.Dim))
@@ -387,13 +387,13 @@ func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Wo
 	fmt.Fprint(stdout, ui.Paint("Proceed with reset? [y/N] ", ui.Red, ui.Bold))
 	if stdin == nil {
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, ui.Paint("gw: reset cancelled", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint("grape: reset cancelled", ui.Dim))
 		return false
 	}
 
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("gw: read confirmation:", ui.Red, ui.Bold), err)
+		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("grape: read confirmation:", ui.Red, ui.Bold), err)
 		return false
 	}
 
@@ -402,7 +402,7 @@ func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Wo
 		return true
 	}
 
-	fmt.Fprintln(stdout, ui.Paint("gw: reset cancelled", ui.Dim))
+	fmt.Fprintln(stdout, ui.Paint("grape: reset cancelled", ui.Dim))
 	return false
 }
 
@@ -419,7 +419,7 @@ func (a App) removeWorktreeAndBranch(ctx context.Context, item worktree.Worktree
 func (a App) removeWorktreeOnly(ctx context.Context, item worktree.Worktree, stdout io.Writer, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s %s\n", ui.Paint("Removing worktree", ui.Blue, ui.Bold), ui.Paint(item.Path, ui.Cyan))
 	if err := a.client.RemoveWorktree(ctx, item.Path, stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "%s remove worktree %s: %v\n", ui.Paint("gw:", ui.Red, ui.Bold), item.Path, err)
+		fmt.Fprintf(stderr, "%s remove worktree %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), item.Path, err)
 		return 1
 	}
 	return 0
@@ -428,7 +428,7 @@ func (a App) removeWorktreeOnly(ctx context.Context, item worktree.Worktree, std
 func (a App) deleteBranch(ctx context.Context, branch string, stdout io.Writer, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s %s\n", ui.Paint("Deleting branch", ui.Red, ui.Bold), ui.Paint(branch, ui.Green))
 	if err := a.client.DeleteBranch(ctx, branch, stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "%s delete branch %s: %v\n", ui.Paint("gw:", ui.Red, ui.Bold), branch, err)
+		fmt.Fprintf(stderr, "%s delete branch %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), branch, err)
 		return 1
 	}
 	return 0
