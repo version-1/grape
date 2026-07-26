@@ -17,6 +17,23 @@ Build a local binary with:
 make build
 ```
 
+## Installation
+
+The `0.1.0` release provides a macOS arm64 binary. Install it under `~/.local/bin` with the GitHub CLI:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+gh release download 0.1.0 --repo version-1/grape --pattern gw_0.1.0_darwin_arm64 --dir "$HOME/.local/bin"
+mv "$HOME/.local/bin/gw_0.1.0_darwin_arm64" "$HOME/.local/bin/gw"
+chmod +x "$HOME/.local/bin/gw"
+```
+
+Ensure `~/.local/bin` is on your `PATH`. For zsh:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## Commands
 
 | Command | Description |
