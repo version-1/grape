@@ -37,6 +37,10 @@ Install the downloaded binary on your `PATH` manually:
 ```sh
 chmod +x ./grape
 mkdir -p "$HOME/.local/bin"
+if [ -e "$HOME/.local/bin/grape" ] || [ -L "$HOME/.local/bin/grape" ]; then
+  echo "Refusing to overwrite $HOME/.local/bin/grape" >&2
+  exit 1
+fi
 mv ./grape "$HOME/.local/bin/grape"
 ```
 
