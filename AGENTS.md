@@ -4,7 +4,7 @@ All documentation must be written in English.
 
 ## Project Overview
 
-`gw` is a Go CLI for `git worktree` workflows. Its entry point is `cmd/gw`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
+`grape` is a Go CLI for `git worktree` workflows. Its entry point is `cmd/grape`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
 
 See `README.md` and `REFERENCE.md` for user-facing documentation.
 
@@ -25,7 +25,7 @@ go test ./...
 make build
 
 # Run the CLI directly
-go run ./cmd/gw list
+go run ./cmd/grape list
 ```
 
 After making changes, run tests for the affected package and `go test ./...`.

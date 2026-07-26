@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 func TestReadResetConfig(t *testing.T) {
-	config, err := ReadResetConfig("gw.json", func(string) ([]byte, error) {
+	config, err := ReadResetConfig("grape.json", func(string) ([]byte, error) {
 		return []byte(`{
 			"default_branch": "main",
 			"worktrees": [
@@ -34,7 +34,7 @@ func TestReadResetConfig(t *testing.T) {
 }
 
 func TestReadResetConfigRejectsEmptyWorktrees(t *testing.T) {
-	_, err := ReadResetConfig("gw.json", func(string) ([]byte, error) {
+	_, err := ReadResetConfig("grape.json", func(string) ([]byte, error) {
 		return []byte(`{"worktrees":[]}`), nil
 	})
 
@@ -50,7 +50,7 @@ func TestReadResetConfigRejectsEquivalentPaths(t *testing.T) {
 		t.Fatalf("get working directory: %v", err)
 	}
 
-	_, err = ReadResetConfig("gw.json", func(string) ([]byte, error) {
+	_, err = ReadResetConfig("grape.json", func(string) ([]byte, error) {
 		return []byte(fmt.Sprintf(`{"worktrees":[{"path":"worktree","branch":"feature/one"},{"path":%q,"branch":"feature/two"}]}`, filepath.Join(cwd, "worktree"))), nil
 	})
 
@@ -76,13 +76,13 @@ func TestResolveConfigPathUsesExplicitPath(t *testing.T) {
 func TestResolveConfigPathPrefersCurrentDirectory(t *testing.T) {
 	resolver := PathResolver{
 		Stat: func(path string) (os.FileInfo, error) {
-			if path != "gw.json" {
-				t.Fatalf("stat path = %q, want gw.json", path)
+			if path != "grape.json" {
+				t.Fatalf("stat path = %q, want grape.json", path)
 			}
 			return nil, nil
 		},
 		Env: func(string) string {
-			return "/env/gw"
+			return "/env/grape"
 		},
 		UserHome: func() (string, error) {
 			return "/home/user", nil
@@ -94,19 +94,19 @@ func TestResolveConfigPathPrefersCurrentDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
-	if got != "gw.json" {
-		t.Fatalf("path = %q, want gw.json", got)
+	if got != "grape.json" {
+		t.Fatalf("path = %q, want grape.json", got)
 	}
 }
 
-func TestResolveConfigPathFallsBackToGWHome(t *testing.T) {
+func TestResolveConfigPathFallsBackToGrapeHome(t *testing.T) {
 	resolver := PathResolver{
 		Stat: func(string) (os.FileInfo, error) {
 			return nil, os.ErrNotExist
 		},
 		Env: func(key string) string {
-			if key == "GW_HOME" {
-				return "/env/gw"
+			if key == "GRAPE_HOME" {
+				return "/env/grape"
 			}
 			return ""
 		},
@@ -120,12 +120,12 @@ func TestResolveConfigPathFallsBackToGWHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
-	if got != filepath.Join("/env/gw", "gw.json") {
-		t.Fatalf("path = %q, want GW_HOME config", got)
+	if got != filepath.Join("/env/grape", "grape.json") {
+		t.Fatalf("path = %q, want GRAPE_HOME config", got)
 	}
 }
 
-func TestResolveConfigPathFallsBackToDefaultGWHome(t *testing.T) {
+func TestResolveConfigPathFallsBackToDefaultGrapeHome(t *testing.T) {
 	resolver := PathResolver{
 		Stat: func(string) (os.FileInfo, error) {
 			return nil, os.ErrNotExist
@@ -143,8 +143,8 @@ func TestResolveConfigPathFallsBackToDefaultGWHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
-	if got != filepath.Join("/home/user", ".gw", "gw.json") {
-		t.Fatalf("path = %q, want default GW_HOME config", got)
+	if got != filepath.Join("/home/user", ".grape", "grape.json") {
+		t.Fatalf("path = %q, want default GRAPE_HOME config", got)
 	}
 }
 

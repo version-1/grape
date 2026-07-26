@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 type ReadFileFunc func(string) ([]byte, error)
@@ -36,30 +36,30 @@ func (r PathResolver) ResolveConfigPath(explicitPath string) (string, error) {
 		return explicitPath, nil
 	}
 
-	currentPath := "gw.json"
+	currentPath := "grape.json"
 	if _, err := r.Stat(currentPath); err == nil {
 		return currentPath, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
 
-	gwHome, err := r.GWHome()
+	grapeHome, err := r.GrapeHome()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(gwHome, "gw.json"), nil
+	return filepath.Join(grapeHome, "grape.json"), nil
 }
 
-func (r PathResolver) GWHome() (string, error) {
-	if gwHome := r.Env("GW_HOME"); gwHome != "" {
-		return gwHome, nil
+func (r PathResolver) GrapeHome() (string, error) {
+	if grapeHome := r.Env("GRAPE_HOME"); grapeHome != "" {
+		return grapeHome, nil
 	}
 
 	home, err := r.UserHome()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".gw"), nil
+	return filepath.Join(home, ".grape"), nil
 }
 
 func ReadResetConfig(path string, readFile ReadFileFunc) (ResetConfig, error) {
