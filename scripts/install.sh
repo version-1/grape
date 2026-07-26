@@ -15,7 +15,7 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 if [ -e "./grape" ]; then
-	echo "Refusing to overwrite ./grape" >&2
+  echo "Refusing to overwrite ./grape" >&2
   exit 1
 fi
 

@@ -19,18 +19,26 @@ make build
 
 ## Installation
 
-The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to place the matching binary under `~/.local/bin`:
+The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/main/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/15d9f8ca7f96ebfd16a187879a81167d0b1ea073/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
 ```
 
-The installer refuses to overwrite an existing `~/.local/bin/gw`. Set `GW_VERSION` or `GW_INSTALL_DIR` before running it to select a different release or destination.
+The installer refuses to overwrite an existing `./grape`. Set `GW_VERSION` before running it to select a different release.
+
+Install the downloaded binary on your `PATH` manually:
+
+```sh
+chmod +x ./grape
+mkdir -p "$HOME/.local/bin"
+mv ./grape "$HOME/.local/bin/grape"
+```
 
 Add `~/.local/bin` to your zsh `PATH` persistently:
 
