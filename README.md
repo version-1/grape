@@ -19,12 +19,12 @@ make build
 
 ## Installation
 
-The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
+The `0.1.1` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/aa71316a5da0dd1bf442c6ec62e51e51bbf28d57/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/4b6b92cef86029798b594bf4266d044c15e9e0fc/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
