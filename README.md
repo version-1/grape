@@ -19,12 +19,19 @@ make build
 
 ## Installation
 
-The `0.1.0` release provides a macOS arm64 binary. Install it under `~/.local/bin` with the GitHub CLI:
+The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Install the matching binary under `~/.local/bin` with the GitHub CLI:
 
 ```sh
 set -e
 install_dir="$HOME/.local/bin"
-asset="gw_0.1.0_darwin_arm64"
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) asset="gw_0.1.0_darwin_arm64" ;;
+  Linux-x86_64) asset="gw_0.1.0_linux_amd64" ;;
+  *)
+    echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2
+    exit 1
+    ;;
+esac
 mkdir -p "$install_dir"
 if [ -e "$install_dir/gw" ]; then
   echo "Refusing to overwrite $install_dir/gw" >&2
