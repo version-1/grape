@@ -19,28 +19,18 @@ make build
 
 ## Installation
 
-The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Install the matching binary under `~/.local/bin` with the GitHub CLI:
+The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to place the matching binary under `~/.local/bin`:
 
 ```sh
-set -e
-install_dir="$HOME/.local/bin"
-case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) asset="gw_0.1.0_darwin_arm64" ;;
-  Linux-x86_64) asset="gw_0.1.0_linux_amd64" ;;
-  *)
-    echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2
-    exit 1
-    ;;
-esac
-mkdir -p "$install_dir"
-if [ -e "$install_dir/gw" ]; then
-  echo "Refusing to overwrite $install_dir/gw" >&2
-  exit 1
-fi
-gh release download 0.1.0 --repo version-1/grape --pattern "$asset" --dir "$install_dir" --skip-existing
-mv "$install_dir/$asset" "$install_dir/gw"
-chmod +x "$install_dir/gw"
+install_script="$(mktemp)"
+curl --fail --location --silent --show-error \
+  https://raw.githubusercontent.com/version-1/grape/main/scripts/install.sh \
+  --output "$install_script"
+sh "$install_script"
+rm "$install_script"
 ```
+
+The installer refuses to overwrite an existing `~/.local/bin/gw`. Set `GW_VERSION` or `GW_INSTALL_DIR` before running it to select a different release or destination.
 
 Add `~/.local/bin` to your zsh `PATH` persistently:
 
