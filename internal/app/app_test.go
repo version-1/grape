@@ -169,6 +169,20 @@ func TestRunHelpFlagShowsInternalHelp(t *testing.T) {
 	}
 }
 
+func TestRunVersionShowsBuildInfo(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	app := New(&fakeClient{}, &fakeRunner{}, nil).WithBuildInfo("0.1.0", "abc1234")
+
+	code := app.Run(context.Background(), []string{"version"}, nil, stdout, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if got, want := stdout.String(), "grape 0.1.0 (abc1234)\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
 func TestRunListFormatsWorktrees(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	app := New(&fakeClient{

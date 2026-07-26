@@ -23,6 +23,8 @@ type App struct {
 	runner       WorktreeRunner
 	readFile     config.ReadFileFunc
 	pathResolver config.PathResolver
+	version      string
+	commit       string
 }
 
 func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFileFunc) App {
@@ -31,11 +33,19 @@ func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFile
 		runner:       runner,
 		readFile:     readFile,
 		pathResolver: config.DefaultPathResolver(),
+		version:      "dev",
+		commit:       "unknown",
 	}
 }
 
 func (a App) WithPathResolver(pathResolver config.PathResolver) App {
 	a.pathResolver = pathResolver
+	return a
+}
+
+func (a App) WithBuildInfo(version string, commit string) App {
+	a.version = version
+	a.commit = commit
 	return a
 }
 
@@ -51,6 +61,8 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 	switch args[0] {
 	case "help", "--help", "-h":
 		return a.runHelp(stdout)
+	case "version":
+		return a.runVersion(stdout)
 	case "list":
 		if len(args) == 1 {
 			return a.runList(ctx, stdout, stderr)
@@ -78,6 +90,11 @@ func (a App) runHelp(stdout io.Writer) int {
 	return 0
 }
 
+func (a App) runVersion(stdout io.Writer) int {
+	fmt.Fprintf(stdout, "grape %s (%s)\n", a.version, a.commit)
+	return 0
+}
+
 func helpText() string {
 	return strings.TrimLeft(`
 grape is a Go CLI for git worktree workflows.
@@ -88,6 +105,7 @@ Usage:
   grape branch <branch-name>
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
+	grape version
   grape help
 
 Commands:
@@ -95,6 +113,7 @@ Commands:
   branch    Show worktrees that reference the given local branch.
   remove    Remove matching worktrees and their local branches.
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
+	version   Show the build version and commit hash.
   help      Show this help.
 
 Config:

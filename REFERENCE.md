@@ -85,6 +85,14 @@ The default config file is `gw.json`. When `--config` is omitted, paths are reso
 
 `reset` is destructive. It deletes all non-default worktrees and local branches, but never the main working tree or the branch checked out there. Before deleting anything, it lists the targets and continues only after `y` or `yes` confirmation. Verify the target repository and configuration file before running it.
 
+### `grape version`
+
+Displays the version and commit hash embedded at build time.
+
+```sh
+grape version
+```
+
 ## Reset Configuration
 
 ```json

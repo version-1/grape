@@ -62,6 +62,7 @@ export PATH="$HOME/.local/bin:$PATH"
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `grape reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
+| `grape version` | Show the build version and commit hash. |
 | `grape help` | Show command help. |
 
 Unknown commands are delegated to `git worktree`.
