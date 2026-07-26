@@ -19,12 +19,12 @@ make build
 
 ## Installation
 
-The `0.1.0` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
+The `0.1.1` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/aa71316a5da0dd1bf442c6ec62e51e51bbf28d57/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/4b6b92cef86029798b594bf4266d044c15e9e0fc/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
@@ -62,6 +62,7 @@ export PATH="$HOME/.local/bin:$PATH"
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `grape reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
+| `grape version` | Show the build version and commit hash. |
 | `grape help` | Show command help. |
 
 Unknown commands are delegated to `git worktree`.
