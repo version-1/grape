@@ -4,7 +4,6 @@ set -eu
 
 version="${GW_VERSION:-0.1.0}"
 repository="version-1/grape"
-install_dir="${GW_INSTALL_DIR:-$HOME/.local/bin}"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) asset="gw_${version}_darwin_arm64" ;;
@@ -15,18 +14,12 @@ case "$(uname -s)-$(uname -m)" in
     ;;
 esac
 
-if [ -e "$install_dir/gw" ]; then
-  echo "Refusing to overwrite $install_dir/gw" >&2
+if [ -e "./grape" ]; then
+	echo "Refusing to overwrite ./grape" >&2
   exit 1
 fi
 
-mkdir -p "$install_dir"
-temporary_dir="$(mktemp -d)"
-trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
-
 download_url="https://github.com/$repository/releases/download/$version/$asset"
-curl --fail --location --silent --show-error "$download_url" --output "$temporary_dir/gw"
-chmod 0755 "$temporary_dir/gw"
-mv "$temporary_dir/gw" "$install_dir/gw"
+curl --fail --location --silent --show-error "$download_url" --output ./grape
 
-echo "Installed gw $version to $install_dir/gw"
+echo "Downloaded grape $version to ./grape"
