@@ -1,21 +1,21 @@
-# gw Reference
+# grape Reference
 
-`gw` is a Go CLI for `git worktree` workflows.
+`grape` is a Go CLI for `git worktree` workflows.
 
 It delegates standard `git worktree` operations and adds a readable worktree list, reverse branch lookup, prefix or regular-expression removal, and configuration-driven reset.
 
-## Running gw
+## Running grape
 
 ```sh
 cd shared/commands/gw
 go run ./cmd/gw list
 ```
 
-Build `gw` with `make build`. The executable entry point is `./cmd/gw`.
+Build `grape` with `make build`. The executable entry point is `./cmd/gw`.
 
 ## Commands
 
-### `gw help`
+### `grape help`
 
 Displays available commands, usage, and config lookup order.
 
@@ -25,7 +25,7 @@ go run ./cmd/gw --help
 go run ./cmd/gw -h
 ```
 
-### `gw list`
+### `grape list`
 
 Displays worktree paths, branches, and HEAD revisions in a colored table.
 
@@ -33,9 +33,9 @@ Displays worktree paths, branches, and HEAD revisions in a colored table.
 go run ./cmd/gw list
 ```
 
-Running `gw` with no arguments behaves the same as `gw list`.
+Running `grape` with no arguments behaves the same as `grape list`.
 
-### `gw branch <branch-name>`
+### `grape branch <branch-name>`
 
 Displays worktrees that reference the specified local branch.
 
@@ -46,7 +46,7 @@ go run ./cmd/gw branch refs/heads/feature/example
 
 The `refs/heads/` prefix is optional. If no matching worktree exists, the command exits with code `1`.
 
-### `gw remove <prefix>`
+### `grape remove <prefix>`
 
 Previews and, after confirmation, removes worktrees whose paths are the prefix itself or are under that prefix. It also deletes their associated local branches with `git branch -D`.
 
@@ -56,7 +56,7 @@ go run ./cmd/gw remove ../worktrees
 
 The prefix is normalized to an absolute path before comparison. Before deleting anything, the command displays the affected worktrees and branches and continues only after `y` or `yes` confirmation. The main working tree is never removed.
 
-### `gw remove --regex <pattern>`
+### `grape remove --regex <pattern>`
 
 Previews and, after confirmation, removes worktrees whose paths match the regular expression. It also deletes their associated local branches with `git branch -D`.
 
@@ -67,7 +67,7 @@ go run ./cmd/gw remove -r 'repo-feature-.+'
 
 The main working tree is never removed. An invalid regular expression exits with code `2`.
 
-### `gw reset`
+### `grape reset`
 
 Reads a configuration file, removes non-default worktrees and local branches, and then creates the configured worktrees.
 
@@ -107,7 +107,7 @@ The default config file is `gw.json`. When `--config` is omitted, paths are reso
 
 ### `default_branch`
 
-The branch excluded from deletion. When omitted, `gw` detects it from `origin/HEAD`.
+The branch excluded from deletion. When omitted, `grape` detects it from `origin/HEAD`.
 
 ### `worktrees[].path`
 
