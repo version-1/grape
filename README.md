@@ -23,8 +23,8 @@ make build
 | --- | --- |
 | `gw list` | Show worktree path, branch, and HEAD in a colored table. |
 | `gw branch <branch-name>` | Show worktrees that reference the given local branch. |
-| `gw remove <prefix>` | Remove worktrees under the prefix and delete their local branches. |
-| `gw remove --regex <pattern>` | Remove worktrees whose paths match the regular expression. |
+| `gw remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
+| `gw remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `gw reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `gw help` | Show command help. |
 
@@ -41,6 +41,8 @@ go run ./cmd/gw list --porcelain
 
 `gw reset` never removes the main working tree or the branch checked out by the main working tree.
 Before deleting anything, `gw reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
+
+`gw remove` also prints its matching worktrees and branches, then continues only after `y` or `yes` confirmation.
 
 Config path resolution:
 

@@ -58,7 +58,7 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 	case "branch":
 		return a.runBranch(ctx, args[1:], stdout, stderr)
 	case "remove":
-		return a.runRemove(ctx, args[1:], stdout, stderr)
+		return a.runRemove(ctx, args[1:], stdin, stdout, stderr)
 	case "reset":
 		return a.runReset(ctx, args[1:], stdin, stdout, stderr)
 	}
@@ -175,7 +175,7 @@ func parseRemoveOptions(args []string) (removeOptions, error) {
 	}, nil
 }
 
-func (a App) runRemove(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
+func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	options, err := parseRemoveOptions(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "gw: %v\n", err)
@@ -204,6 +204,9 @@ func (a App) runRemove(ctx context.Context, args []string, stdout io.Writer, std
 		fmt.Fprintln(stdout, ui.Paint("gw: no matching worktrees", ui.Dim))
 		return 0
 	}
+	if !confirmRemove(stdin, stdout, targets) {
+		return 1
+	}
 
 	for _, target := range targets {
 		if code := a.removeWorktreeAndBranch(ctx, target, stdout, stderr); code != 0 {
@@ -211,6 +214,39 @@ func (a App) runRemove(ctx context.Context, args []string, stdout io.Writer, std
 		}
 	}
 	return 0
+}
+
+func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktree) bool {
+	fmt.Fprintln(stdout, ui.Paint("gw remove will delete:", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint("Worktrees", ui.Blue, ui.Bold))
+	fmt.Fprint(stdout, ui.FormatWorktreeList(targets))
+	fmt.Fprintln(stdout, ui.Paint("Branches", ui.Red, ui.Bold))
+	for _, target := range targets {
+		if target.Branch != "" {
+			fmt.Fprintf(stdout, "  %s\n", ui.Paint(target.Branch, ui.Green))
+		}
+	}
+
+	fmt.Fprint(stdout, ui.Paint("Proceed with removal? [y/N] ", ui.Red, ui.Bold))
+	if stdin == nil {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, ui.Paint("gw: removal cancelled", ui.Dim))
+		return false
+	}
+
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("gw: read confirmation:", ui.Red, ui.Bold), err)
+		return false
+	}
+
+	answer := strings.ToLower(strings.TrimSpace(line))
+	if answer == "y" || answer == "yes" {
+		return true
+	}
+
+	fmt.Fprintln(stdout, ui.Paint("gw: removal cancelled", ui.Dim))
+	return false
 }
 
 type resetOptions struct {

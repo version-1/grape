@@ -238,7 +238,7 @@ func TestRunRemoveRegexDeletesMatchingWorktrees(t *testing.T) {
 	}
 	app := New(client, &fakeRunner{}, nil)
 
-	code := app.Run(context.Background(), []string{"remove", "--regex", `feature-(one|two)$`}, nil, io.Discard, io.Discard)
+	code := app.Run(context.Background(), []string{"remove", "--regex", `feature-(one|two)$`}, strings.NewReader("yes\n"), io.Discard, io.Discard)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -260,7 +260,7 @@ func TestRunRemoveSkipsMainWorktree(t *testing.T) {
 	}
 	app := New(client, &fakeRunner{}, nil)
 
-	code := app.Run(context.Background(), []string{"remove", "--regex", `/repo.*$`}, nil, io.Discard, io.Discard)
+	code := app.Run(context.Background(), []string{"remove", "--regex", `/repo.*$`}, strings.NewReader("y\n"), io.Discard, io.Discard)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -270,6 +270,32 @@ func TestRunRemoveSkipsMainWorktree(t *testing.T) {
 	}
 	if !slices.Equal(client.deleted, []string{"feature/old"}) {
 		t.Fatalf("deleted = %#v, want %#v", client.deleted, []string{"feature/old"})
+	}
+}
+
+func TestRunRemoveCancelsWithoutConfirmation(t *testing.T) {
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{
+			{Path: "/repo", Branch: "main", Main: true},
+			{Path: "/repo-feature", Branch: "feature/one"},
+		},
+	}
+	stdout := &bytes.Buffer{}
+	app := New(client, &fakeRunner{}, nil)
+
+	code := app.Run(context.Background(), []string{"remove", "--regex", `.*`}, strings.NewReader("n\n"), stdout, io.Discard)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertContains(t, stdout.String(), "gw remove will delete:")
+	assertContains(t, stdout.String(), "/repo-feature")
+	assertContains(t, stdout.String(), "gw: removal cancelled")
+	if len(client.removed) != 0 {
+		t.Fatalf("removed = %#v, want none", client.removed)
+	}
+	if len(client.deleted) != 0 {
+		t.Fatalf("deleted = %#v, want none", client.deleted)
 	}
 }
 

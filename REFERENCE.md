@@ -1,27 +1,23 @@
 # gw Reference
 
-`gw` は `git worktree` を扱うための Go CLI です。
+`gw` is a Go CLI for `git worktree` workflows.
 
-標準の `git worktree` をそのまま呼び出す用途に加えて、worktree の見やすい一覧表示、branch からの逆引き、prefix / regex による削除、設定ファイルに基づく reset を提供します。
+It delegates standard `git worktree` operations and adds a readable worktree list, reverse branch lookup, prefix or regular-expression removal, and configuration-driven reset.
 
-## 実行
+## Running gw
 
 ```sh
 cd shared/commands/gw
 go run ./cmd/gw list
 ```
 
-`gw` をビルドして PATH に置く場合は、entrypoint は `./cmd/gw` です。
-
-```sh
-make build
-```
+Build `gw` with `make build`. The executable entry point is `./cmd/gw`.
 
 ## Commands
 
 ### `gw help`
 
-コマンド一覧、使い方、設定ファイルの読み込み順を表示します。
+Displays available commands, usage, and config lookup order.
 
 ```sh
 go run ./cmd/gw help
@@ -31,49 +27,49 @@ go run ./cmd/gw -h
 
 ### `gw list`
 
-worktree の path、branch、HEAD を色付きの表で表示します。
+Displays worktree paths, branches, and HEAD revisions in a colored table.
 
 ```sh
 go run ./cmd/gw list
 ```
 
-引数なしの `gw` も `gw list` と同じ動作です。
+Running `gw` with no arguments behaves the same as `gw list`.
 
 ### `gw branch <branch-name>`
 
-指定した local branch を参照している worktree を表示します。
+Displays worktrees that reference the specified local branch.
 
 ```sh
 go run ./cmd/gw branch feature/example
 go run ./cmd/gw branch refs/heads/feature/example
 ```
 
-`refs/heads/` prefix はあってもなくても同じ branch として扱います。該当する worktree がない場合は exit code `1` を返します。
+The `refs/heads/` prefix is optional. If no matching worktree exists, the command exits with code `1`.
 
 ### `gw remove <prefix>`
 
-path が prefix 配下にある worktree を削除し、対応する local branch があれば `git branch -D` で削除します。
+Previews and, after confirmation, removes worktrees whose paths are the prefix itself or are under that prefix. It also deletes their associated local branches with `git branch -D`.
 
 ```sh
 go run ./cmd/gw remove ../worktrees
 ```
 
-prefix は絶対 path に正規化して比較します。prefix 自体と、その配下の worktree path が対象です。
+The prefix is normalized to an absolute path before comparison. Before deleting anything, the command displays the affected worktrees and branches and continues only after `y` or `yes` confirmation. The main working tree is never removed.
 
 ### `gw remove --regex <pattern>`
 
-worktree path に正規表現を適用し、match した worktree を削除します。対応する local branch があれば `git branch -D` で削除します。
+Previews and, after confirmation, removes worktrees whose paths match the regular expression. It also deletes their associated local branches with `git branch -D`.
 
 ```sh
 go run ./cmd/gw remove --regex 'repo-feature-.+'
 go run ./cmd/gw remove -r 'repo-feature-.+'
 ```
 
-正規表現が不正な場合は exit code `2` を返します。
+The main working tree is never removed. An invalid regular expression exits with code `2`.
 
 ### `gw reset`
 
-設定ファイルを読み、default branch 以外の worktree と local branch を削除してから、設定ファイルどおりに worktree を作成します。
+Reads a configuration file, removes non-default worktrees and local branches, and then creates the configured worktrees.
 
 ```sh
 go run ./cmd/gw reset
@@ -81,17 +77,15 @@ go run ./cmd/gw reset --config gw.json
 go run ./cmd/gw reset -c gw.json
 ```
 
-設定ファイルはデフォルトで `gw.json` を読みます。
+The default config file is `gw.json`. When `--config` is omitted, paths are resolved in this order:
 
-`--config` を指定しない場合は、次の順序で設定ファイルを解決します。
+1. `./gw.json`
+2. `$GW_HOME/gw.json`
+3. `~/.gw/gw.json` when `GW_HOME` is unset
 
-1. カレントディレクトリの `gw.json`
-2. `GW_HOME/gw.json`
-3. `GW_HOME` が未設定の場合は `~/.gw/gw.json`
+`reset` is destructive. It deletes all non-default worktrees and local branches, but never the main working tree or the branch checked out there. Before deleting anything, it lists the targets and continues only after `y` or `yes` confirmation. Verify the target repository and configuration file before running it.
 
-`reset` は破壊的操作です。default branch 以外の worktree と local branch を削除します。main working tree と main working tree が checkout している branch は削除しません。削除前に対象 worktree と branch を表示し、`y` または `yes` で確認された場合だけ処理を続行します。実行前に対象 repository と設定ファイルを確認してください。
-
-## Reset Config
+## Reset Configuration
 
 ```json
 {
@@ -106,21 +100,6 @@ go run ./cmd/gw reset -c gw.json
       "path": ".worktrees/2",
       "branch": "worktrees/2",
       "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/3",
-      "branch": "worktrees/3",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/4",
-      "branch": "worktrees/4",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/5",
-      "branch": "worktrees/5",
-      "start_point": "origin/main"
     }
   ]
 }
@@ -128,31 +107,23 @@ go run ./cmd/gw reset -c gw.json
 
 ### `default_branch`
 
-削除対象から除外する branch です。
-
-省略した場合は `origin/HEAD` から検出します。
+The branch excluded from deletion. When omitted, `gw` detects it from `origin/HEAD`.
 
 ### `worktrees[].path`
 
-作成する worktree の path です。
-
-同じ path を複数指定することはできません。
+The path of the worktree to create. Paths must be unique after cleaning, so values such as `worktree` and `./worktree` cannot both be configured.
 
 ### `worktrees[].branch`
 
-作成する local branch 名です。
-
-`refs/heads/` prefix はあってもなくても同じ branch として扱います。同じ branch を複数指定することはできません。
+The local branch name to create. The `refs/heads/` prefix is optional, and each configured branch must be unique.
 
 ### `worktrees[].start_point`
 
-`git worktree add -B <branch> <path> <start_point>` の `<start_point>` に渡す値です。
-
-省略した場合は `default_branch` を起点にします。
+The value supplied as `<start_point>` to `git worktree add -B <branch> <path> <start_point>`. When omitted, `default_branch` is used.
 
 ## Unknown Commands
 
-`list`、`branch`、`remove`、`reset` 以外の引数は `git worktree` にそのまま委譲します。
+Arguments other than `list`, `branch`, `remove`, and `reset` are delegated directly to `git worktree`.
 
 ```sh
 go run ./cmd/gw prune
@@ -162,9 +133,9 @@ go run ./cmd/gw list --porcelain
 ## Package Layout
 
 ```text
-cmd/gw/              # entrypoint
+cmd/gw/              # entry point
 internal/app/        # CLI dispatch and command orchestration
 internal/config/     # reset config schema and validation
 internal/ui/         # colored output and worktree table formatting
-internal/worktree/   # git adapter, worktree parser, matcher
+internal/worktree/   # Git adapter, worktree parser, and matcher
 ```

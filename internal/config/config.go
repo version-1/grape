@@ -91,12 +91,14 @@ func ReadResetConfig(path string, readFile ReadFileFunc) (ResetConfig, error) {
 			return ResetConfig{}, fmt.Errorf("duplicate branch %q", branch)
 		}
 		branches[branch] = struct{}{}
-		if _, ok := paths[item.Path]; ok {
+		path := filepath.Clean(item.Path)
+		if _, ok := paths[path]; ok {
 			return ResetConfig{}, fmt.Errorf("duplicate path %q", item.Path)
 		}
-		paths[item.Path] = struct{}{}
+		paths[path] = struct{}{}
 
 		config.Worktrees[i].Branch = branch
+		config.Worktrees[i].Path = path
 	}
 
 	return config, nil

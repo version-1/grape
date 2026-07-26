@@ -43,6 +43,17 @@ func TestReadResetConfigRejectsEmptyWorktrees(t *testing.T) {
 	assertContains(t, err.Error(), "worktrees must not be empty")
 }
 
+func TestReadResetConfigRejectsEquivalentPaths(t *testing.T) {
+	_, err := ReadResetConfig("gw.json", func(string) ([]byte, error) {
+		return []byte(`{"worktrees":[{"path":"worktree","branch":"feature/one"},{"path":"./worktree","branch":"feature/two"}]}`), nil
+	})
+
+	if err == nil {
+		t.Fatal("err = nil, want error")
+	}
+	assertContains(t, err.Error(), "duplicate path")
+}
+
 func TestResolveConfigPathUsesExplicitPath(t *testing.T) {
 	resolver := PathResolver{}
 

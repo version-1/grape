@@ -2,37 +2,36 @@
 
 All documentation must be written in English.
 
-## プロジェクト概要
+## Project Overview
 
-`gw` は `git worktree` ワークフローを支援する Go CLI です。エントリーポイントは `cmd/gw` で、コアの責務は `internal/app`、`internal/config`、`internal/ui`、`internal/worktree` に分離されています。
+`gw` is a Go CLI for `git worktree` workflows. Its entry point is `cmd/gw`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
 
-詳細な利用方法は `README.md` と `REFERENCE.md` を参照してください。
+See `README.md` and `REFERENCE.md` for user-facing documentation.
 
-## 開発ルール
+## Development Rules
 
-- Go 1.22 を使用する。
-- 既存のパッケージ責務を維持し、CLI の制御は `internal/app`、Git 操作は `internal/worktree` に置く。
-- 公開する CLI の引数、終了コード、設定ファイル形式を変更する場合は、互換性とドキュメントへの影響を確認する。
-- `remove` と `reset` は worktree とローカルブランチを削除するため、対象判定と確認フローを弱めない。
-- ユーザー向けの README は英語で記述する。コマンドの完全な仕様は `REFERENCE.md` に記載する。
+- Use Go 1.22.
+- Preserve existing package responsibilities: CLI control belongs in `internal/app`, and Git operations belong in `internal/worktree`.
+- When changing public CLI arguments, exit codes, or the configuration format, verify compatibility and update documentation.
+- `remove` and `reset` delete worktrees and local branches. Do not weaken target selection or confirmation safeguards.
 
-## よく使うコマンド
+## Common Commands
 
 ```sh
-# 全テスト
+# Run all tests
 go test ./...
 
-# ローカルバイナリのビルド
+# Build a local binary
 make build
 
-# CLI を直接実行
+# Run the CLI directly
 go run ./cmd/gw list
 ```
 
-変更後は、影響するパッケージのテストに加えて `go test ./...` を実行してください。
+After making changes, run tests for the affected package and `go test ./...`.
 
-## 変更時の確認事項
+## Change Checklist
 
-- Go コードは `gofmt` を適用する。
-- CLI の振る舞いを変えた場合は、対応するテストと `README.md`／`REFERENCE.md` を更新する。
-- 削除を伴う変更では、main working tree とそのチェックアウト中のブランチが対象外であることを確認する。
+- Format Go code with `gofmt`.
+- When CLI behavior changes, update its tests, `README.md`, and `REFERENCE.md`.
+- For deletion-related changes, confirm that the main working tree and the branch checked out there remain excluded.
