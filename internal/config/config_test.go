@@ -148,6 +148,32 @@ func TestResolveConfigPathFallsBackToDefaultGrapeHome(t *testing.T) {
 	}
 }
 
+func TestResolveConfigPathIgnoresLegacyGWHome(t *testing.T) {
+	resolver := PathResolver{
+		Stat: func(string) (os.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		Env: func(key string) string {
+			if key == "GW_HOME" {
+				return "/legacy/gw"
+			}
+			return ""
+		},
+		UserHome: func() (string, error) {
+			return "/home/user", nil
+		},
+	}
+
+	got, err := resolver.ResolveConfigPath("")
+
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if got != filepath.Join("/home/user", ".grape", "grape.json") {
+		t.Fatalf("path = %q, want default grape home config", got)
+	}
+}
+
 func TestResolveConfigPathReturnsStatError(t *testing.T) {
 	statErr := errors.New("stat failed")
 	resolver := PathResolver{

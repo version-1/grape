@@ -18,12 +18,12 @@ make build
 
 ## Installation
 
-The `0.1.1` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
+The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/6f1ebaa27bd25e4b723871dee0872a5c3b6ecc50/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/cdff260d5078c7f0db67e2ab59ddaa552d5798d7/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
@@ -85,6 +85,8 @@ Config path resolution:
 1. `./grape.json`
 2. `$GRAPE_HOME/grape.json`
 3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
+
+### Migrating from gw
 
 This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `GW_HOME` with `GRAPE_HOME`, and move `~/.gw` to `~/.grape`. The old names are not resolved automatically.
 
