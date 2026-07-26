@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/app"
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/app"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 func FormatWorktreeList(worktrees []worktree.Worktree) string {

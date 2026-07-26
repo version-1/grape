@@ -7,8 +7,7 @@ It wraps `git worktree` and adds formatted worktree listing, branch lookup, pref
 ## Usage
 
 ```sh
-cd shared/commands/gw
-go run ./cmd/gw list
+go run ./cmd/grape list
 ```
 
 Build a local binary with:
@@ -19,18 +18,18 @@ make build
 
 ## Installation
 
-The `0.1.1` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
+The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/4b6b92cef86029798b594bf4266d044c15e9e0fc/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/cdff260d5078c7f0db67e2ab59ddaa552d5798d7/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
 ```
 
-The installer refuses to overwrite an existing `./grape`. Set `GW_VERSION` before running it to select a different release.
+The installer refuses to overwrite an existing `./grape`. Set `GRAPE_VERSION` before running it to select a different release.
 
 Install the downloaded binary on your `PATH` manually:
 
@@ -61,20 +60,20 @@ export PATH="$HOME/.local/bin:$PATH"
 | `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
-| `grape reset --config gw.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
+| `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `grape version` | Show the build version and commit hash. |
 | `grape help` | Show command help. |
 
 Unknown commands are delegated to `git worktree`.
 
 ```sh
-go run ./cmd/gw prune
-go run ./cmd/gw list --porcelain
+go run ./cmd/grape prune
+go run ./cmd/grape list --porcelain
 ```
 
 ## Reset Config
 
-`grape reset` reads `gw.json` by default.
+`grape reset` reads `grape.json` by default.
 
 `grape reset` never removes the main working tree or the branch checked out by the main working tree.
 Before deleting anything, `grape reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
@@ -83,9 +82,13 @@ Before deleting anything, `grape reset` prints the worktrees and branches to del
 
 Config path resolution:
 
-1. `./gw.json`
-2. `$GW_HOME/gw.json`
-3. `~/.gw/gw.json` when `GW_HOME` is not set
+1. `./grape.json`
+2. `$GRAPE_HOME/grape.json`
+3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
+
+### Migrating from gw
+
+This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `GW_HOME` with `GRAPE_HOME`, and move `~/.gw` to `~/.grape`. The old names are not resolved automatically.
 
 ```json
 {

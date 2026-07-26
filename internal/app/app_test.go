@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/config"
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/config"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 type fakeRunner struct {
@@ -147,7 +147,7 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 	}
 	assertContains(t, stdout.String(), "Usage:")
 	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
-	assertContains(t, stdout.String(), "$GW_HOME/gw.json")
+	assertContains(t, stdout.String(), "$GRAPE_HOME/grape.json")
 	if runner.args != nil {
 		t.Fatalf("runner args = %#v, want nil", runner.args)
 	}
@@ -342,14 +342,14 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 		branches: []string{"main", "feature/current", "feature/old", "feature/orphan"},
 	}
 	app := New(client, &fakeRunner{}, func(path string) ([]byte, error) {
-		if path != "gw.json" {
-			t.Fatalf("path = %q, want gw.json", path)
+		if path != "grape.json" {
+			t.Fatalf("path = %q, want grape.json", path)
 		}
 		return configData, nil
 	})
 
 	stdout := &bytes.Buffer{}
-	code := app.Run(context.Background(), []string{"reset", "--config", "gw.json"}, strings.NewReader("y\n"), stdout, io.Discard)
+	code := app.Run(context.Background(), []string{"reset", "--config", "grape.json"}, strings.NewReader("y\n"), stdout, io.Discard)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -394,7 +394,7 @@ func TestRunResetCancelsWhenConfirmationIsNotYes(t *testing.T) {
 		return configData, nil
 	})
 
-	code := app.Run(context.Background(), []string{"reset", "--config", "gw.json"}, strings.NewReader("n\n"), stdout, io.Discard)
+	code := app.Run(context.Background(), []string{"reset", "--config", "grape.json"}, strings.NewReader("n\n"), stdout, io.Discard)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
@@ -425,8 +425,8 @@ func TestRunResetDetectsDefaultBranchWhenConfigOmitsIt(t *testing.T) {
 			return nil, os.ErrNotExist
 		},
 		Env: func(key string) string {
-			if key == "GW_HOME" {
-				return "/env/gw"
+			if key == "GRAPE_HOME" {
+				return "/env/grape"
 			}
 			return ""
 		},
@@ -445,14 +445,14 @@ func TestRunResetDetectsDefaultBranchWhenConfigOmitsIt(t *testing.T) {
 	}
 }
 
-func TestRunResetReadsGWHomeConfigWhenCurrentConfigIsMissing(t *testing.T) {
+func TestRunResetReadsGrapeHomeConfigWhenCurrentConfigIsMissing(t *testing.T) {
 	configData := []byte(`{"worktrees":[{"path":"../repo-feature","branch":"feature/example"}]}`)
 	client := &fakeClient{
 		defaultBranch: "main",
 		branches:      []string{"main"},
 	}
 	app := New(client, &fakeRunner{}, func(path string) ([]byte, error) {
-		want := filepath.Join("/env/gw", "gw.json")
+		want := filepath.Join("/env/grape", "grape.json")
 		if path != want {
 			t.Fatalf("path = %q, want %q", path, want)
 		}
@@ -462,8 +462,8 @@ func TestRunResetReadsGWHomeConfigWhenCurrentConfigIsMissing(t *testing.T) {
 			return nil, os.ErrNotExist
 		},
 		Env: func(key string) string {
-			if key == "GW_HOME" {
-				return "/env/gw"
+			if key == "GRAPE_HOME" {
+				return "/env/grape"
 			}
 			return ""
 		},

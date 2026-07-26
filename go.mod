@@ -1,3 +1,3 @@
-module github.com/version-1/dotfiles/shared/commands/gw
+module github.com/version-1/grape
 
 go 1.22

@@ -9,9 +9,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/config"
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/ui"
-	"github.com/version-1/dotfiles/shared/commands/gw/internal/worktree"
+	"github.com/version-1/grape/internal/config"
+	"github.com/version-1/grape/internal/ui"
+	"github.com/version-1/grape/internal/worktree"
 )
 
 type WorktreeRunner interface {
@@ -105,7 +105,7 @@ Usage:
   grape branch <branch-name>
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
-	grape version
+  grape version
   grape help
 
 Commands:
@@ -113,14 +113,14 @@ Commands:
   branch    Show worktrees that reference the given local branch.
   remove    Remove matching worktrees and their local branches.
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
-	version   Show the build version and commit hash.
+  version   Show the build version and commit hash.
   help      Show this help.
 
 Config:
   grape reset reads config in this order when --config is omitted:
-    1. ./gw.json
-    2. $GW_HOME/gw.json
-    3. ~/.gw/gw.json
+    1. ./grape.json
+    2. $GRAPE_HOME/grape.json
+    3. ~/.grape/grape.json
 
 Safety:
   reset and remove never remove the main working tree.
