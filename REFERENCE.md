@@ -111,7 +111,7 @@ The branch excluded from deletion. When omitted, `gw` detects it from `origin/HE
 
 ### `worktrees[].path`
 
-The path of the worktree to create. Paths must be unique after cleaning, so values such as `worktree` and `./worktree` cannot both be configured.
+The path of the worktree to create. Paths must resolve to unique locations, so values such as `worktree`, `./worktree`, and that same path expressed absolutely cannot all be configured.
 
 ### `worktrees[].branch`
 

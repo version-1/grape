@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +45,13 @@ func TestReadResetConfigRejectsEmptyWorktrees(t *testing.T) {
 }
 
 func TestReadResetConfigRejectsEquivalentPaths(t *testing.T) {
-	_, err := ReadResetConfig("gw.json", func(string) ([]byte, error) {
-		return []byte(`{"worktrees":[{"path":"worktree","branch":"feature/one"},{"path":"./worktree","branch":"feature/two"}]}`), nil
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+
+	_, err = ReadResetConfig("gw.json", func(string) ([]byte, error) {
+		return []byte(fmt.Sprintf(`{"worktrees":[{"path":"worktree","branch":"feature/one"},{"path":%q,"branch":"feature/two"}]}`, filepath.Join(cwd, "worktree"))), nil
 	})
 
 	if err == nil {
