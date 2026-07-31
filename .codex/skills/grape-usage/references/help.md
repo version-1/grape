@@ -7,3 +7,5 @@ grape help
 grape --help
 grape -h
 ```
+
+Help itself does not read or validate `grape.json`.

@@ -7,10 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/version-1/grape/internal/color"
 	"github.com/version-1/grape/internal/config"
+	"github.com/version-1/grape/internal/logging"
 	"github.com/version-1/grape/internal/ui"
 	"github.com/version-1/grape/internal/worktree"
 )
@@ -27,10 +30,16 @@ type App struct {
 	exampleConfigPath string
 	version           string
 	commit            string
+	colors            color.Policy
+}
+
+func (a App) WithColorPolicy(policy color.Policy) App {
+	a.colors = policy
+	return a
 }
 
 func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFileFunc) App {
-	return App{
+	application := App{
 		client:            client,
 		runner:            runner,
 		readFile:          readFile,
@@ -39,6 +48,15 @@ func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFile
 		version:           "dev",
 		commit:            "unknown",
 	}
+	if readFile == nil {
+		application.readFile = func(string) ([]byte, error) { return nil, os.ErrNotExist }
+		application.pathResolver = config.PathResolver{
+			Stat:     func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+			Env:      func(string) string { return "" },
+			UserHome: func() (string, error) { return "/nonexistent", nil },
+		}
+	}
+	return application
 }
 
 func (a App) WithExampleConfigPath(path string) App {
@@ -65,6 +83,7 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 	if len(args) == 0 {
 		args = []string{"list"}
 	}
+	logger := logging.New(stderr, a.colors.Stderr)
 
 	switch args[0] {
 	case "help", "--help", "-h":
@@ -72,27 +91,60 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 	case "version":
 		return a.runVersion(stdout)
 	case "init":
-		return a.runInit(args[1:], stdout, stderr)
+		return a.runInit(args[1:], stdout, logger)
 	case "list":
 		if len(args) == 1 {
-			return a.runList(ctx, stdout, stderr)
+			if _, code := a.readConfig("", logger); code != 0 {
+				return code
+			}
+			return a.runList(ctx, stdout, logger)
 		}
 	case "branch":
-		return a.runBranch(ctx, args[1:], stdout, stderr)
+		if _, code := a.readConfig("", logger); code != 0 {
+			return code
+		}
+		return a.runBranch(ctx, args[1:], stdout, logger)
 	case "remove":
-		return a.runRemove(ctx, args[1:], stdin, stdout, stderr)
+		if _, code := a.readConfig("", logger); code != 0 {
+			return code
+		}
+		return a.runRemove(ctx, args[1:], stdin, stdout, stderr, logger)
 	case "reset":
-		return a.runReset(ctx, args[1:], stdin, stdout, stderr)
+		return a.runReset(ctx, args[1:], stdin, stdout, stderr, logger)
+	case "push":
+		cfg, code := a.readConfig("", logger)
+		if code != 0 {
+			return code
+		}
+		return a.runPush(ctx, args[1:], cfg, stdout, stderr, logger)
 	}
 
 	if err := a.runner.Run(ctx, args, stdin, stdout, stderr); err != nil {
 		if exitErr, ok := err.(exitCodeError); ok {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(stderr, "grape: %v\n", err)
+		logger.Error("%v", err)
 		return 1
 	}
 	return 0
+}
+
+func (a App) readConfig(explicitPath string, logger logging.Logger) (config.Config, int) {
+	discovery, err := a.pathResolver.Discover(explicitPath)
+	if err != nil {
+		logger.Error("resolve config: %v", err)
+		return config.Config{}, 2
+	}
+	if !discovery.Found {
+		logger.Warning("grape.json not found; using default protected branches: main, master")
+		return config.Config{}, 0
+	}
+	cfg, err := config.Read(discovery.Path, a.readFile)
+	if err != nil {
+		logger.Error("read config: %v", err)
+		return config.Config{}, 2
+	}
+	return cfg, 0
 }
 
 func (a App) runHelp(stdout io.Writer) int {
@@ -115,6 +167,7 @@ Usage:
   grape branch <branch-name>
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
+  grape push [--force-with-lease]
   grape init
   grape version
   grape help
@@ -124,43 +177,49 @@ Commands:
   branch    Show worktrees that reference the given local branch.
   remove    Remove matching worktrees and their local branches.
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
+  push      Safely push the current branch to origin.
   init      Create grape.json in the resolved config home from grape.example.json.
   version   Show the build version and commit hash.
   help      Show this help.
 
 Config:
-  grape reset reads config in this order when --config is omitted:
+  Configuration-aware commands read config in this order:
     1. ./grape.json
     2. $GRAPE_HOME/grape.json
     3. ~/.grape/grape.json
+  Config is decoded strictly. Missing config uses protected defaults main and master.
 
 Safety:
+  push accepts no arguments or exactly --force-with-lease, always targets origin,
+  and refuses protected branches.
   reset and remove never remove the main working tree.
   reset also keeps the branch checked out by the main working tree.
   reset shows deletion targets and continues only after y/yes confirmation.
 
 Unknown commands are delegated to git worktree.
+
+Color is automatic per output stream and disabled by NO_COLOR.
 `, "\n")
 }
 
-func (a App) runInit(args []string, stdout io.Writer, stderr io.Writer) int {
+func (a App) runInit(args []string, stdout io.Writer, logger logging.Logger) int {
 	if len(args) != 0 {
-		fmt.Fprintln(stderr, "grape: usage: grape init")
+		logger.Error("usage: grape init")
 		return 2
 	}
 
 	grapeHome, err := a.pathResolver.GrapeHome()
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: resolve config directory: %v\n", err)
+		logger.Error("resolve config directory: %v", err)
 		return 1
 	}
 	destination := filepath.Join(grapeHome, "grape.json")
 	if err := config.Initialize(a.exampleConfigPath, destination); err != nil {
 		if errors.Is(err, config.ErrConfigAlreadyExists) {
-			fmt.Fprintf(stderr, "grape: config already exists: %s\n", destination)
+			logger.Error("config already exists: %s", destination)
 			return 1
 		}
-		fmt.Fprintf(stderr, "grape: initialize config: %v\n", err)
+		logger.Error("initialize config: %v", err)
 		return 1
 	}
 
@@ -168,31 +227,31 @@ func (a App) runInit(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func (a App) runList(ctx context.Context, stdout io.Writer, stderr io.Writer) int {
+func (a App) runList(ctx context.Context, stdout io.Writer, logger logging.Logger) int {
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("grape:", ui.Red, ui.Bold), err)
+		logger.Error("%v", err)
 		return 1
 	}
 	if len(worktrees) == 0 {
-		fmt.Fprintln(stdout, ui.Paint("No worktrees", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(a.colors.Stdout, "No worktrees", ui.Dim))
 		return 0
 	}
 
-	fmt.Fprint(stdout, ui.FormatWorktreeList(worktrees))
+	fmt.Fprint(stdout, ui.FormatWorktreeList(worktrees, a.colors.Stdout))
 	return 0
 }
 
-func (a App) runBranch(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
+func (a App) runBranch(ctx context.Context, args []string, stdout io.Writer, logger logging.Logger) int {
 	if len(args) != 1 {
-		fmt.Fprintf(stderr, "%s usage: grape branch <branch-name>\n", ui.Paint("grape:", ui.Red, ui.Bold))
+		logger.Error("usage: grape branch <branch-name>")
 		return 2
 	}
 
 	branch := worktree.NormalizeBranchName(args[0])
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s\n", ui.Paint("grape:", ui.Red, ui.Bold), err)
+		logger.Error("%v", err)
 		return 1
 	}
 
@@ -200,11 +259,11 @@ func (a App) runBranch(ctx context.Context, args []string, stdout io.Writer, std
 		return item.Branch == branch
 	})
 	if len(targets) == 0 {
-		fmt.Fprintf(stdout, "%s %s\n", ui.Paint("No worktree for branch", ui.Dim), ui.Paint(branch, ui.Green))
+		fmt.Fprintf(stdout, "%s %s\n", ui.Paint(a.colors.Stdout, "No worktree for branch", ui.Dim), ui.Paint(a.colors.Stdout, branch, ui.Green))
 		return 1
 	}
 
-	fmt.Fprint(stdout, ui.FormatWorktreeList(targets))
+	fmt.Fprint(stdout, ui.FormatWorktreeList(targets, a.colors.Stdout))
 	return 0
 }
 
@@ -231,10 +290,10 @@ func parseRemoveOptions(args []string) (removeOptions, error) {
 	}, nil
 }
 
-func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {
 	options, err := parseRemoveOptions(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: %v\n", err)
+		logger.Error("%v", err)
 		return 2
 	}
 
@@ -243,13 +302,13 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 		Regex:   options.Regex,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: %v\n", err)
+		logger.Error("%v", err)
 		return 2
 	}
 
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: list worktrees: %v\n", err)
+		logger.Error("list worktrees: %v", err)
 		return 1
 	}
 
@@ -257,10 +316,10 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 		return !item.Main && matcher(item)
 	})
 	if len(targets) == 0 {
-		fmt.Fprintln(stdout, ui.Paint("grape: no matching worktrees", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(a.colors.Stdout, "grape: no matching worktrees", ui.Dim))
 		return 0
 	}
-	if !confirmRemove(stdin, stdout, targets) {
+	if !confirmRemove(stdin, stdout, targets, a.colors.Stdout, logger) {
 		return 1
 	}
 
@@ -272,27 +331,27 @@ func (a App) runRemove(ctx context.Context, args []string, stdin io.Reader, stdo
 	return 0
 }
 
-func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktree) bool {
-	fmt.Fprintln(stdout, ui.Paint("grape remove will delete:", ui.Red, ui.Bold))
-	fmt.Fprintln(stdout, ui.Paint("Worktrees", ui.Blue, ui.Bold))
-	fmt.Fprint(stdout, ui.FormatWorktreeList(targets))
-	fmt.Fprintln(stdout, ui.Paint("Branches", ui.Red, ui.Bold))
+func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktree, colorEnabled bool, logger logging.Logger) bool {
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape remove will delete:", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "Worktrees", ui.Blue, ui.Bold))
+	fmt.Fprint(stdout, ui.FormatWorktreeList(targets, colorEnabled))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "Branches", ui.Red, ui.Bold))
 	for _, target := range targets {
 		if target.Branch != "" {
-			fmt.Fprintf(stdout, "  %s\n", ui.Paint(target.Branch, ui.Green))
+			fmt.Fprintf(stdout, "  %s\n", ui.Paint(colorEnabled, target.Branch, ui.Green))
 		}
 	}
 
-	fmt.Fprint(stdout, ui.Paint("Proceed with removal? [y/N] ", ui.Red, ui.Bold))
+	fmt.Fprint(stdout, ui.Paint(colorEnabled, "Proceed with removal? [y/N] ", ui.Red, ui.Bold))
 	if stdin == nil {
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, ui.Paint("grape: removal cancelled", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape: removal cancelled", ui.Dim))
 		return false
 	}
 
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("grape: read confirmation:", ui.Red, ui.Bold), err)
+		logger.Error("read confirmation: %v", err)
 		return false
 	}
 
@@ -301,7 +360,7 @@ func confirmRemove(stdin io.Reader, stdout io.Writer, targets []worktree.Worktre
 		return true
 	}
 
-	fmt.Fprintln(stdout, ui.Paint("grape: removal cancelled", ui.Dim))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape: removal cancelled", ui.Dim))
 	return false
 }
 
@@ -324,22 +383,78 @@ func parseResetOptions(args []string) (resetOptions, error) {
 	return resetOptions{ConfigPath: *configPath}, nil
 }
 
-func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+func parsePushOptions(args []string) (bool, error) {
+	switch {
+	case len(args) == 0:
+		return false, nil
+	case len(args) == 1 && args[0] == "--force-with-lease":
+		return true, nil
+	default:
+		return false, errors.New("usage: grape push [--force-with-lease]")
+	}
+}
+
+func (a App) runPush(ctx context.Context, args []string, cfg config.Config, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {
+	forceWithLease, err := parsePushOptions(args)
+	if err != nil {
+		logger.Error("%v", err)
+		return 2
+	}
+
+	branch, err := a.client.CurrentBranch(ctx)
+	if err != nil {
+		logger.Error("current HEAD is detached or not in a git repository")
+		return 1
+	}
+	if cfg.BranchProtected(branch) {
+		logger.Error("refusing to push protected branch: %s", branch)
+		return 1
+	}
+	if err := a.client.ValidateBranch(ctx, branch); err != nil {
+		if strings.HasPrefix(branch, "-") {
+			logger.Error("refusing to push branch that starts with '-': %s", branch)
+		} else {
+			logger.Error("invalid branch name: %s", branch)
+		}
+		return 1
+	}
+	originURL, err := a.client.OriginURL(ctx)
+	if err != nil {
+		logger.Error("%v", err)
+		return 1
+	}
+
+	command := "git push origin HEAD:" + branch
+	if forceWithLease {
+		command = "git push --force-with-lease origin HEAD:" + branch
+	}
+	logger.Info("branch: %s", branch)
+	logger.Info("origin: %s", originURL)
+	logger.Info("running: %s", command)
+
+	if err := a.client.Push(ctx, branch, forceWithLease, stdout, stderr); err != nil {
+		if exitErr, ok := err.(exitCodeError); ok {
+			return exitErr.ExitCode()
+		}
+		logger.Error("%v", err)
+		return 1
+	}
+	return 0
+}
+
+func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {
 	options, err := parseResetOptions(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: %v\n", err)
+		logger.Error("%v", err)
 		return 2
 	}
 
-	configPath, err := a.pathResolver.ResolveConfigPath(options.ConfigPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "grape: resolve config: %v\n", err)
-		return 2
+	resetConfig, code := a.readConfig(options.ConfigPath, logger)
+	if code != 0 {
+		return code
 	}
-
-	resetConfig, err := config.ReadResetConfig(configPath, a.readFile)
-	if err != nil {
-		fmt.Fprintf(stderr, "grape: read config: %v\n", err)
+	if err := resetConfig.ValidateReset(); err != nil {
+		logger.Error("read config: %v", err)
 		return 2
 	}
 
@@ -347,19 +462,19 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	if defaultBranch == "" {
 		defaultBranch, err = a.client.DefaultBranch(ctx)
 		if err != nil {
-			fmt.Fprintf(stderr, "grape: detect default branch: %v\n", err)
+			logger.Error("detect default branch: %v", err)
 			return 1
 		}
 	}
 	defaultBranch = worktree.NormalizeBranchName(defaultBranch)
 	if defaultBranch == "" {
-		fmt.Fprintln(stderr, "grape: default branch is empty")
+		logger.Error("default branch is empty")
 		return 2
 	}
 
 	worktrees, err := a.client.ListWorktrees(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: list worktrees: %v\n", err)
+		logger.Error("list worktrees: %v", err)
 		return 1
 	}
 
@@ -379,7 +494,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 
 	branches, err := a.client.ListBranches(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "grape: list branches: %v\n", err)
+		logger.Error("list branches: %v", err)
 		return 1
 	}
 
@@ -395,7 +510,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		deleteTargets = append(deleteTargets, branch)
 	}
 
-	if !confirmReset(stdin, stdout, removeTargets, deleteTargets) {
+	if !confirmReset(stdin, stdout, removeTargets, deleteTargets, a.colors.Stdout, logger) {
 		return 1
 	}
 
@@ -412,9 +527,9 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	}
 
 	for _, item := range resetConfig.Worktrees {
-		fmt.Fprintf(stdout, "%s %s %s\n", ui.Paint("Adding worktree", ui.Green, ui.Bold), ui.Paint(item.Path, ui.Cyan), ui.Paint(item.Branch, ui.Green))
+		fmt.Fprintf(stdout, "%s %s %s\n", ui.Paint(a.colors.Stdout, "Adding worktree", ui.Green, ui.Bold), ui.Paint(a.colors.Stdout, item.Path, ui.Cyan), ui.Paint(a.colors.Stdout, item.Branch, ui.Green))
 		if err := a.client.AddWorktree(ctx, item, defaultBranch, stdout, stderr); err != nil {
-			fmt.Fprintf(stderr, "%s add worktree %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), item.Path, err)
+			logger.Error("add worktree %s: %v", item.Path, err)
 			return 1
 		}
 	}
@@ -422,34 +537,34 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	return 0
 }
 
-func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Worktree, deleteTargets []string) bool {
-	fmt.Fprintln(stdout, ui.Paint("grape reset will delete:", ui.Red, ui.Bold))
-	fmt.Fprintln(stdout, ui.Paint("Worktrees", ui.Blue, ui.Bold))
+func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Worktree, deleteTargets []string, colorEnabled bool, logger logging.Logger) bool {
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape reset will delete:", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "Worktrees", ui.Blue, ui.Bold))
 	if len(removeTargets) == 0 {
-		fmt.Fprintln(stdout, ui.Paint("  (none)", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(colorEnabled, "  (none)", ui.Dim))
 	} else {
-		fmt.Fprint(stdout, ui.FormatWorktreeList(removeTargets))
+		fmt.Fprint(stdout, ui.FormatWorktreeList(removeTargets, colorEnabled))
 	}
 
-	fmt.Fprintln(stdout, ui.Paint("Branches", ui.Red, ui.Bold))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "Branches", ui.Red, ui.Bold))
 	if len(deleteTargets) == 0 {
-		fmt.Fprintln(stdout, ui.Paint("  (none)", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(colorEnabled, "  (none)", ui.Dim))
 	} else {
 		for _, branch := range deleteTargets {
-			fmt.Fprintf(stdout, "  %s\n", ui.Paint(branch, ui.Green))
+			fmt.Fprintf(stdout, "  %s\n", ui.Paint(colorEnabled, branch, ui.Green))
 		}
 	}
 
-	fmt.Fprint(stdout, ui.Paint("Proceed with reset? [y/N] ", ui.Red, ui.Bold))
+	fmt.Fprint(stdout, ui.Paint(colorEnabled, "Proceed with reset? [y/N] ", ui.Red, ui.Bold))
 	if stdin == nil {
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, ui.Paint("grape: reset cancelled", ui.Dim))
+		fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape: reset cancelled", ui.Dim))
 		return false
 	}
 
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(stdout, "%s %v\n", ui.Paint("grape: read confirmation:", ui.Red, ui.Bold), err)
+		logger.Error("read confirmation: %v", err)
 		return false
 	}
 
@@ -458,7 +573,7 @@ func confirmReset(stdin io.Reader, stdout io.Writer, removeTargets []worktree.Wo
 		return true
 	}
 
-	fmt.Fprintln(stdout, ui.Paint("grape: reset cancelled", ui.Dim))
+	fmt.Fprintln(stdout, ui.Paint(colorEnabled, "grape: reset cancelled", ui.Dim))
 	return false
 }
 
@@ -473,18 +588,18 @@ func (a App) removeWorktreeAndBranch(ctx context.Context, item worktree.Worktree
 }
 
 func (a App) removeWorktreeOnly(ctx context.Context, item worktree.Worktree, stdout io.Writer, stderr io.Writer) int {
-	fmt.Fprintf(stdout, "%s %s\n", ui.Paint("Removing worktree", ui.Blue, ui.Bold), ui.Paint(item.Path, ui.Cyan))
+	fmt.Fprintf(stdout, "%s %s\n", ui.Paint(a.colors.Stdout, "Removing worktree", ui.Blue, ui.Bold), ui.Paint(a.colors.Stdout, item.Path, ui.Cyan))
 	if err := a.client.RemoveWorktree(ctx, item.Path, stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "%s remove worktree %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), item.Path, err)
+		logging.New(stderr, a.colors.Stderr).Error("remove worktree %s: %v", item.Path, err)
 		return 1
 	}
 	return 0
 }
 
 func (a App) deleteBranch(ctx context.Context, branch string, stdout io.Writer, stderr io.Writer) int {
-	fmt.Fprintf(stdout, "%s %s\n", ui.Paint("Deleting branch", ui.Red, ui.Bold), ui.Paint(branch, ui.Green))
+	fmt.Fprintf(stdout, "%s %s\n", ui.Paint(a.colors.Stdout, "Deleting branch", ui.Red, ui.Bold), ui.Paint(a.colors.Stdout, branch, ui.Green))
 	if err := a.client.DeleteBranch(ctx, branch, stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "%s delete branch %s: %v\n", ui.Paint("grape:", ui.Red, ui.Bold), branch, err)
+		logging.New(stderr, a.colors.Stderr).Error("delete branch %s: %v", branch, err)
 		return 1
 	}
 	return 0

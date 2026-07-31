@@ -1,11 +1,20 @@
 package worktree
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 )
+
+type commandExitError int
+
+func (e commandExitError) Error() string { return "exit" }
+func (e commandExitError) ExitCode() int { return int(e) }
 
 func TestParse(t *testing.T) {
 	output := strings.Join([]string{
@@ -60,5 +69,176 @@ func TestNewMatcherMatchesRegex(t *testing.T) {
 	got := Filter([]Worktree{{Path: "/repo-feature-one"}, {Path: "/repo-main"}}, matcher)
 	if !slices.Equal(got, []Worktree{{Path: "/repo-feature-one"}}) {
 		t.Fatalf("got = %#v, want regex match", got)
+	}
+}
+
+func TestCommandClientPushUsesExactArguments(t *testing.T) {
+	tests := []struct {
+		name  string
+		force bool
+		want  []string
+	}{
+		{"normal", false, []string{"push", "origin", "HEAD:feature/test"}},
+		{"force with lease", true, []string{"push", "--force-with-lease", "origin", "HEAD:feature/test"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var got []string
+			client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, _ io.Writer, _ io.Writer) error {
+				got = append([]string(nil), args...)
+				return nil
+			}}
+			if err := client.Push(context.Background(), "feature/test", test.force, io.Discard, io.Discard); err != nil {
+				t.Fatalf("Push() error = %v", err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("args = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCommandClientOriginURLSelection(t *testing.T) {
+	tests := []struct {
+		name      string
+		pushURLs  string
+		urls      string
+		want      string
+		wantError string
+	}{
+		{"push URL precedence", "ssh://push\n", "https://fetch\n", "ssh://push", ""},
+		{"URL fallback", "", "https://fetch\n", "https://fetch", ""},
+		{"missing", "", "", "", "remote.origin.url is missing"},
+		{"multiple push URLs", "one\ntwo\n", "fallback\n", "", "remote.origin.pushurl must have exactly one value"},
+		{"multiple URLs", "", "one\ntwo\n", "", "remote.origin.url must have exactly one value"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := CommandClient{RunCommand: configCommandRunner(test.pushURLs, test.urls)}
+			got, err := client.OriginURL(context.Background())
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("error = %v, want %q", err, test.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("OriginURL() error = %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("URL = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCommandClientOriginURLCountsEmptyConfiguredValues(t *testing.T) {
+	tests := []struct {
+		name      string
+		pushValue string
+		urlValue  string
+		key       string
+		wantError string
+	}{
+		{"empty push URL", "\n", "fallback\n", "remote.origin.pushurl", "is empty"},
+		{"empty plus push URL", "\nssh://push\n", "fallback\n", "remote.origin.pushurl", "must have exactly one value"},
+		{"empty URL", "", "\n", "remote.origin.url", "is empty"},
+		{"empty plus URL", "", "\nhttps://fetch\n", "remote.origin.url", "must have exactly one value"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+				key := args[len(args)-1]
+				value := test.urlValue
+				if key == "remote.origin.pushurl" {
+					value = test.pushValue
+				}
+				if value == "" {
+					return commandExitError(1)
+				}
+				_, _ = io.WriteString(stdout, value)
+				return nil
+			}}
+			_, err := client.OriginURL(context.Background())
+			if err == nil || !strings.Contains(err.Error(), test.key) || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("OriginURL() error = %v, want key %q and %q", err, test.key, test.wantError)
+			}
+		})
+	}
+}
+
+func configCommandRunner(pushURLs string, urls string) RunGitFunc {
+	return func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+		var value string
+		switch args[len(args)-1] {
+		case "remote.origin.pushurl":
+			value = pushURLs
+		case "remote.origin.url":
+			value = urls
+		}
+		if value == "" {
+			return commandExitError(1)
+		}
+		_, _ = io.WriteString(stdout, value)
+		return nil
+	}
+}
+
+func TestCommandClientCurrentAndBranchValidation(t *testing.T) {
+	var calls [][]string
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+		calls = append(calls, append([]string(nil), args...))
+		if args[0] == "symbolic-ref" {
+			_, _ = io.WriteString(stdout, "feature/test\n")
+		}
+		return nil
+	}}
+
+	branch, err := client.CurrentBranch(context.Background())
+	if err != nil || branch != "feature/test" {
+		t.Fatalf("CurrentBranch() = %q, %v", branch, err)
+	}
+	if err := client.ValidateBranch(context.Background(), branch); err != nil {
+		t.Fatalf("ValidateBranch() error = %v", err)
+	}
+	want := [][]string{
+		{"symbolic-ref", "--quiet", "--short", "HEAD"},
+		{"check-ref-format", "--branch", "feature/test"},
+	}
+	if !slices.EqualFunc(calls, want, slices.Equal[[]string]) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestCommandClientRejectsBranchBeginningWithDashWithoutGit(t *testing.T) {
+	called := false
+	client := CommandClient{RunCommand: func(context.Context, []string, io.Reader, io.Writer, io.Writer) error {
+		called = true
+		return nil
+	}}
+	if err := client.ValidateBranch(context.Background(), "-danger"); err == nil {
+		t.Fatal("ValidateBranch() error = nil")
+	}
+	if called {
+		t.Fatal("git was called")
+	}
+}
+
+func TestCommandClientPreservesPushStreamsAndError(t *testing.T) {
+	wantErr := errors.New("push failed")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	client := CommandClient{RunCommand: func(_ context.Context, _ []string, _ io.Reader, gotStdout io.Writer, gotStderr io.Writer) error {
+		_, _ = io.WriteString(gotStdout, "raw stdout")
+		_, _ = io.WriteString(gotStderr, "raw stderr")
+		return wantErr
+	}}
+
+	err := client.Push(context.Background(), "feature/test", false, stdout, stderr)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Push() error = %v, want %v", err, wantErr)
+	}
+	if stdout.String() != "raw stdout" || stderr.String() != "raw stderr" {
+		t.Fatalf("stdout = %q, stderr = %q", stdout, stderr)
 	}
 }

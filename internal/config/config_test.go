@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -58,6 +59,132 @@ func TestReadResetConfigRejectsEquivalentPaths(t *testing.T) {
 		t.Fatal("err = nil, want error")
 	}
 	assertContains(t, err.Error(), "duplicate path")
+}
+
+func TestReadRejectsUnknownFields(t *testing.T) {
+	tests := []string{
+		`{"unknown":true}`,
+		`{"push":{"unknown":true}}`,
+		`{"worktrees":[{"path":"../repo","branch":"feature/test","unknown":true}]}`,
+	}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			_, err := Read("grape.json", func(string) ([]byte, error) {
+				return []byte(input), nil
+			})
+			if err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("err = %v, want unknown field error", err)
+			}
+		})
+	}
+}
+
+func TestReadRejectsNullAndDuplicateFields(t *testing.T) {
+	tests := []string{
+		`null`,
+		`{"push":null}`,
+		`{"push":{"protected_branches":null}}`,
+		`{"push":{"protected_branches":["release/*"]},"push":{}}`,
+		`{"push":{"protected_branches":["main"],"protected_branches":["release/*"]}}`,
+		`{"push":{"protected_branches":["release/*"]},"Push":{}}`,
+		`{"push":{"protected_branches":["main"],"Protected_Branches":["release/*"]}}`,
+		`{"worktrees":[{"path":"one","Path":"two","branch":"feature/test"}]}`,
+	}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			if _, err := Read("grape.json", func(string) ([]byte, error) {
+				return []byte(input), nil
+			}); err == nil {
+				t.Fatalf("Read(%s) error = nil, want error", input)
+			}
+		})
+	}
+}
+
+func TestReadSupportsPushOnlyResetOnlyAndCombinedConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"push only", `{"push":{"protected_branches":["trunk"]}}`},
+		{"reset only", `{"worktrees":[{"path":"../repo","branch":"feature/test"}]}`},
+		{"combined", `{"worktrees":[{"path":"../repo","branch":"feature/test"}],"push":{"protected_branches":["trunk"]}}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Read("grape.json", func(string) ([]byte, error) {
+				return []byte(test.input), nil
+			}); err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestProtectedBranchesDefaultsAndReplacement(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want []string
+	}{
+		{"omitted push", Config{}, []string{"main", "master"}},
+		{"omitted list", Config{Push: &PushConfig{}}, []string{"main", "master"}},
+		{"configured replacement", Config{Push: &PushConfig{ProtectedBranches: slicePointer([]string{"trunk", "release/*"})}}, []string{"trunk", "release/*"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.cfg.ProtectedBranches(); !slices.Equal(got, test.want) {
+				t.Fatalf("ProtectedBranches() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestReadRejectsEmptyAndInvalidProtectedBranches(t *testing.T) {
+	tests := []string{
+		`{"push":{"protected_branches":[]}}`,
+		`{"push":{"protected_branches":["["]}}`,
+	}
+	for _, input := range tests {
+		if _, err := Read("grape.json", func(string) ([]byte, error) {
+			return []byte(input), nil
+		}); err == nil {
+			t.Fatalf("Read(%s) error = nil, want error", input)
+		}
+	}
+}
+
+func TestBranchProtectedUsesPathMatchSemantics(t *testing.T) {
+	cfg := Config{Push: &PushConfig{ProtectedBranches: slicePointer([]string{"main", "release/*"})}}
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"main", true},
+		{"Main", false},
+		{"release/1.0", true},
+		{"release/series/1.0", false},
+		{"feature/main", false},
+	}
+	for _, test := range tests {
+		if got := cfg.BranchProtected(test.branch); got != test.want {
+			t.Fatalf("BranchProtected(%q) = %t, want %t", test.branch, got, test.want)
+		}
+	}
+}
+
+func TestValidateResetIsCommandSpecific(t *testing.T) {
+	pushOnly := Config{Push: &PushConfig{ProtectedBranches: slicePointer([]string{"trunk"})}}
+	if err := pushOnly.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if err := pushOnly.ValidateReset(); err == nil {
+		t.Fatal("ValidateReset() error = nil, want missing worktrees error")
+	}
+}
+
+func slicePointer(values []string) *[]string {
+	return &values
 }
 
 func TestResolveConfigPathUsesExplicitPath(t *testing.T) {
@@ -186,6 +313,62 @@ func TestResolveConfigPathReturnsStatError(t *testing.T) {
 
 	if !errors.Is(err, statErr) {
 		t.Fatalf("err = %v, want %v", err, statErr)
+	}
+}
+
+func TestDiscoverDistinguishesMissingFromSelectedFile(t *testing.T) {
+	tests := []struct {
+		name      string
+		stat      func(string) (os.FileInfo, error)
+		wantPath  string
+		wantFound bool
+		wantError error
+	}{
+		{
+			name: "current selected",
+			stat: func(path string) (os.FileInfo, error) {
+				if path == "grape.json" {
+					return nil, nil
+				}
+				return nil, os.ErrNotExist
+			},
+			wantPath: "grape.json", wantFound: true,
+		},
+		{
+			name: "home selected",
+			stat: func(path string) (os.FileInfo, error) {
+				if path == filepath.Join("/home/user", ".grape", "grape.json") {
+					return nil, nil
+				}
+				return nil, os.ErrNotExist
+			},
+			wantPath: filepath.Join("/home/user", ".grape", "grape.json"), wantFound: true,
+		},
+		{
+			name: "all missing",
+			stat: func(string) (os.FileInfo, error) {
+				return nil, os.ErrNotExist
+			},
+			wantPath: filepath.Join("/home/user", ".grape", "grape.json"), wantFound: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := PathResolver{
+				Stat: test.stat,
+				Env:  func(string) string { return "" },
+				UserHome: func() (string, error) {
+					return "/home/user", nil
+				},
+			}
+			got, err := resolver.Discover("")
+			if !errors.Is(err, test.wantError) {
+				t.Fatalf("Discover() error = %v, want %v", err, test.wantError)
+			}
+			if got.Path != test.wantPath || got.Found != test.wantFound {
+				t.Fatalf("Discover() = %#v, want path=%q found=%t", got, test.wantPath, test.wantFound)
+			}
+		})
 	}
 }
 

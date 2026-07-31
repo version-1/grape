@@ -55,6 +55,41 @@ type fakeClient struct {
 	deleted       []string
 	added         []worktree.ConfiguredItem
 	addedDefaults []string
+	currentBranch string
+	originURL     string
+	validateErr   error
+	pushErr       error
+	pushedBranch  string
+	pushedForce   bool
+	gitCalls      []string
+}
+
+func (c *fakeClient) CurrentBranch(context.Context) (string, error) {
+	c.gitCalls = append(c.gitCalls, "current-branch")
+	if c.listErr != nil {
+		return "", c.listErr
+	}
+	return c.currentBranch, nil
+}
+
+func (c *fakeClient) ValidateBranch(_ context.Context, branch string) error {
+	c.gitCalls = append(c.gitCalls, "validate:"+branch)
+	return c.validateErr
+}
+
+func (c *fakeClient) OriginURL(context.Context) (string, error) {
+	c.gitCalls = append(c.gitCalls, "origin-url")
+	if c.listErr != nil {
+		return "", c.listErr
+	}
+	return c.originURL, nil
+}
+
+func (c *fakeClient) Push(_ context.Context, branch string, force bool, _ io.Writer, _ io.Writer) error {
+	c.gitCalls = append(c.gitCalls, "push")
+	c.pushedBranch = branch
+	c.pushedForce = force
+	return c.pushErr
 }
 
 func (c *fakeClient) ListWorktrees(context.Context) ([]worktree.Worktree, error) {
@@ -504,7 +539,10 @@ func TestRunResetDetectsDefaultBranchWhenConfigOmitsIt(t *testing.T) {
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) {
 		return configData, nil
 	}).WithPathResolver(config.PathResolver{
-		Stat: func(string) (os.FileInfo, error) {
+		Stat: func(path string) (os.FileInfo, error) {
+			if path == filepath.Join("/env/grape", "grape.json") {
+				return nil, nil
+			}
 			return nil, os.ErrNotExist
 		},
 		Env: func(key string) string {
@@ -541,7 +579,10 @@ func TestRunResetReadsGrapeHomeConfigWhenCurrentConfigIsMissing(t *testing.T) {
 		}
 		return configData, nil
 	}).WithPathResolver(config.PathResolver{
-		Stat: func(string) (os.FileInfo, error) {
+		Stat: func(path string) (os.FileInfo, error) {
+			if path == filepath.Join("/env/grape", "grape.json") {
+				return nil, nil
+			}
 			return nil, os.ErrNotExist
 		},
 		Env: func(key string) string {
@@ -560,6 +601,272 @@ func TestRunResetReadsGrapeHomeConfigWhenCurrentConfigIsMissing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
+}
+
+func TestRunPushAcceptsOnlyDocumentedForms(t *testing.T) {
+	valid := []struct {
+		name  string
+		args  []string
+		force bool
+	}{
+		{"normal", []string{"push"}, false},
+		{"force with lease", []string{"push", "--force-with-lease"}, true},
+	}
+	for _, test := range valid {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test", originURL: "ssh://origin"}
+			stderr := &bytes.Buffer{}
+			application := withConfig(New(client, &fakeRunner{}, nil), `{}`)
+			code := application.Run(context.Background(), test.args, nil, io.Discard, stderr)
+			if code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr)
+			}
+			if client.pushedBranch != "feature/test" || client.pushedForce != test.force {
+				t.Fatalf("push = %q force=%t", client.pushedBranch, client.pushedForce)
+			}
+			assertContains(t, stderr.String(), "grape: branch: feature/test")
+			assertContains(t, stderr.String(), "grape: origin: ssh://origin")
+		})
+	}
+
+	invalid := [][]string{
+		{"push", "--force"},
+		{"push", "-f"},
+		{"push", "--force-with-lease=main:abc"},
+		{"push", "origin"},
+		{"push", "HEAD:other"},
+		{"push", "--tags"},
+		{"push", "--force-with-lease", "extra"},
+	}
+	for _, args := range invalid {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test", originURL: "ssh://origin"}
+			code := withConfig(New(client, &fakeRunner{}, nil), `{}`).
+				Run(context.Background(), args, nil, io.Discard, io.Discard)
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if len(client.gitCalls) != 0 {
+				t.Fatalf("git calls = %#v, want none", client.gitCalls)
+			}
+		})
+	}
+}
+
+func TestRunPushRefusesProtectedBranchesInBothModes(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		branch string
+	}{
+		{"default", `{}`, "main"},
+		{"configured exact", `{"push":{"protected_branches":["trunk"]}}`, "trunk"},
+		{"configured glob", `{"push":{"protected_branches":["release/*"]}}`, "release/1.0"},
+	}
+	for _, test := range tests {
+		for _, forceArg := range [][]string{{"push"}, {"push", "--force-with-lease"}} {
+			t.Run(test.name+"/"+strings.Join(forceArg, " "), func(t *testing.T) {
+				client := &fakeClient{currentBranch: test.branch, originURL: "ssh://origin"}
+				stderr := &bytes.Buffer{}
+				code := withConfig(New(client, &fakeRunner{}, nil), test.config).
+					Run(context.Background(), forceArg, nil, io.Discard, stderr)
+				if code != 1 {
+					t.Fatalf("code = %d, want 1", code)
+				}
+				assertContains(t, stderr.String(), "refusing to push protected branch")
+				if client.pushedBranch != "" {
+					t.Fatalf("pushed branch = %q", client.pushedBranch)
+				}
+			})
+		}
+	}
+}
+
+func TestRunPushPreservesGitExitCode(t *testing.T) {
+	client := &fakeClient{
+		currentBranch: "feature/test",
+		originURL:     "ssh://origin",
+		pushErr:       fakeExitError{code: 23},
+	}
+	code := withConfig(New(client, &fakeRunner{}, nil), `{}`).
+		Run(context.Background(), []string{"push"}, nil, io.Discard, io.Discard)
+	if code != 23 {
+		t.Fatalf("code = %d, want 23", code)
+	}
+}
+
+func TestRunPushStopsBeforeGitForInvalidConfig(t *testing.T) {
+	client := &fakeClient{currentBranch: "feature/test", originURL: "ssh://origin"}
+	code := withConfig(New(client, &fakeRunner{}, nil), `{"unknown":true}`).
+		Run(context.Background(), []string{"push"}, nil, io.Discard, io.Discard)
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	if len(client.gitCalls) != 0 {
+		t.Fatalf("git calls = %#v, want none", client.gitCalls)
+	}
+}
+
+func TestRunPushValidatesConfigBeforeArguments(t *testing.T) {
+	stderr := &bytes.Buffer{}
+	code := withConfig(New(&fakeClient{}, &fakeRunner{}, nil), `{"unknown":true}`).
+		Run(context.Background(), []string{"push", "--force"}, nil, io.Discard, stderr)
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertContains(t, stderr.String(), "unknown field")
+	if strings.Contains(stderr.String(), "usage: grape push") {
+		t.Fatalf("arguments were validated before config: %q", stderr)
+	}
+}
+
+func TestRunPushRejectsSymbolicAndBranchValidationFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		client     *fakeClient
+		want       string
+		wantCalls  []string
+		wantStatus int
+	}{
+		{
+			name:       "symbolic branch failure",
+			client:     &fakeClient{listErr: errors.New("not a repository")},
+			want:       "current HEAD is detached or not in a git repository",
+			wantCalls:  []string{"current-branch"},
+			wantStatus: 1,
+		},
+		{
+			name:       "branch begins with dash",
+			client:     &fakeClient{currentBranch: "-danger", validateErr: errors.New("invalid")},
+			want:       "refusing to push branch that starts with '-'",
+			wantCalls:  []string{"current-branch", "validate:-danger"},
+			wantStatus: 1,
+		},
+		{
+			name:       "invalid branch",
+			client:     &fakeClient{currentBranch: "invalid name", validateErr: errors.New("invalid")},
+			want:       "invalid branch name",
+			wantCalls:  []string{"current-branch", "validate:invalid name"},
+			wantStatus: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stderr := &bytes.Buffer{}
+			code := withConfig(New(test.client, &fakeRunner{}, nil), `{}`).
+				Run(context.Background(), []string{"push"}, nil, io.Discard, stderr)
+			if code != test.wantStatus {
+				t.Fatalf("code = %d, want %d", code, test.wantStatus)
+			}
+			assertContains(t, stderr.String(), test.want)
+			if !slices.Equal(test.client.gitCalls, test.wantCalls) {
+				t.Fatalf("calls = %#v, want %#v", test.client.gitCalls, test.wantCalls)
+			}
+		})
+	}
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("input failed")
+}
+
+func TestConfirmationInputErrorsUseStderr(t *testing.T) {
+	client := &fakeClient{worktrees: []worktree.Worktree{{Path: "/repo-feature", Branch: "feature/test"}}}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := withConfig(New(client, &fakeRunner{}, nil), `{}`).
+		Run(context.Background(), []string{"remove", "/repo-feature"}, failingReader{}, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertContains(t, stderr.String(), "grape: read confirmation: input failed")
+	if strings.Contains(stdout.String(), "read confirmation") {
+		t.Fatalf("confirmation error written to stdout: %q", stdout)
+	}
+}
+
+func TestRunPushWarnsAndContinuesWhenConfigIsMissing(t *testing.T) {
+	client := &fakeClient{currentBranch: "feature/test", originURL: "ssh://origin"}
+	stderr := &bytes.Buffer{}
+	code := New(client, &fakeRunner{}, nil).
+		Run(context.Background(), []string{"push"}, nil, io.Discard, stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr)
+	}
+	assertContains(t, stderr.String(), "grape: warning: grape.json not found; using default protected branches: main, master")
+}
+
+func TestGlobalConfigValidationAppliesToBuiltIns(t *testing.T) {
+	tests := [][]string{
+		{"list"},
+		{"branch", "feature/test"},
+		{"remove", "prefix"},
+		{"reset"},
+		{"push"},
+	}
+	for _, args := range tests {
+		t.Run(args[0], func(t *testing.T) {
+			client := &fakeClient{}
+			code := withConfig(New(client, &fakeRunner{}, nil), `{"unknown":true}`).
+				Run(context.Background(), args, nil, io.Discard, io.Discard)
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if len(client.gitCalls) != 0 || len(client.removed) != 0 {
+				t.Fatalf("client was called: %#v", client)
+			}
+		})
+	}
+}
+
+func TestGlobalConfigValidationExcludesHelpVersionInitAndDelegation(t *testing.T) {
+	tests := [][]string{
+		{"help"},
+		{"version"},
+		{"init", "extra"},
+		{"list", "--porcelain"},
+		{"prune"},
+	}
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			reads := 0
+			runner := &fakeRunner{}
+			application := New(&fakeClient{}, runner, func(string) ([]byte, error) {
+				reads++
+				return []byte(`{"unknown":true}`), nil
+			}).WithPathResolver(config.PathResolver{
+				Stat: func(string) (os.FileInfo, error) { return nil, nil },
+				Env:  func(string) string { return "" },
+				UserHome: func() (string, error) {
+					return "/home/user", nil
+				},
+			})
+			_ = application.Run(context.Background(), args, nil, io.Discard, io.Discard)
+			if reads != 0 {
+				t.Fatalf("config reads = %d, want 0", reads)
+			}
+		})
+	}
+}
+
+func withConfig(application App, contents string) App {
+	application.readFile = func(string) ([]byte, error) {
+		return []byte(contents), nil
+	}
+	return application.WithPathResolver(config.PathResolver{
+		Stat: func(path string) (os.FileInfo, error) {
+			if path == "grape.json" {
+				return nil, nil
+			}
+			return nil, os.ErrNotExist
+		},
+		Env: func(string) string { return "" },
+		UserHome: func() (string, error) {
+			return "/home/user", nil
+		},
+	})
 }
 
 func assertContains(t *testing.T, got string, want string) {
