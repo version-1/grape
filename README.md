@@ -4,18 +4,6 @@
 
 It provides agent-friendly `git worktree` workflows, including formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
-## Usage
-
-```sh
-grape list
-```
-
-Build a local binary with:
-
-```sh
-make build
-```
-
 ## Installation
 
 The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
@@ -62,7 +50,19 @@ grape init
 
 This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
 
-## Commands
+## Usage
+
+```sh
+grape list
+```
+
+Build a local binary with:
+
+```sh
+make build
+```
+
+### Commands
 
 | Command | Description |
 | --- | --- |
@@ -82,7 +82,7 @@ grape prune
 grape list --porcelain
 ```
 
-## Reset Config
+### Reset Config
 
 `grape reset` reads `grape.json` by default.
 
