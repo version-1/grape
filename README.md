@@ -69,11 +69,7 @@ make build
 | `grape list` | Show worktree path, branch, and HEAD in a colored table. |
 | `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
-| `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
-| `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
 | `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
-| `grape version` | Show the build version and commit hash. |
-| `grape help` | Show command help. |
 
 Unknown commands are delegated to `git worktree`.
 
@@ -81,6 +77,10 @@ Unknown commands are delegated to `git worktree`.
 grape prune
 grape list --porcelain
 ```
+
+### Reference
+
+See the [command reference](.codex/skills/grape-usage/references/README.md) for all commands, options, and safety behavior.
 
 ### Reset Config
 
@@ -131,5 +131,3 @@ Config path resolution:
 ```
 
 `reset` is destructive. It removes worktrees and local branches except the default branch before creating configured worktrees.
-
-See the [command reference](docs/reference.md) for the full command reference.
