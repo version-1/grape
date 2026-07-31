@@ -1,8 +1,8 @@
 # grape
 
-`grape` is a Go CLI for `git worktree` workflows.
+`grape` is a Git wrapper designed for use by coding agents.
 
-It wraps `git worktree` and adds formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
+It provides agent-friendly `git worktree` workflows, including formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
 ## Usage
 
