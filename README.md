@@ -86,14 +86,13 @@ See the [command reference](.codex/skills/grape-usage/references/README.md) for 
 
 ### Reset Worktrees
 
-`grape reset` reads `grape.json` by default.
+`grape reset` rebuilds the repository's non-default worktrees from a configuration file. It removes the existing non-default worktrees and local branches, then creates the worktrees declared in the configuration.
 
-`grape reset` never removes the main working tree or the branch checked out by the main working tree.
-Before deleting anything, `grape reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
+This provides a repeatable way to restore a known worktree layout for coding-agent sessions without manually removing and recreating each worktree.
 
-`grape remove` also prints its matching worktrees and branches, then continues only after `y` or `yes` confirmation.
+`grape reset` is destructive, but never removes the main working tree or the branch checked out there. Before deleting anything, it prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
 
-Config path resolution:
+By default, `grape reset` resolves `grape.json` in this order:
 
 1. `./grape.json`
 2. `$GRAPE_HOME/grape.json`
@@ -131,5 +130,3 @@ Config path resolution:
   ]
 }
 ```
-
-`reset` is destructive. It removes worktrees and local branches except the default branch before creating configured worktrees.
