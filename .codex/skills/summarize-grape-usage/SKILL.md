@@ -11,7 +11,7 @@ Explain `grape` usage accurately and concisely for the user's task.
 
 Before answering, read the relevant canonical command reference in [`docs/references/`](../../../docs/references/README.md). Treat the relevant reference page as the source of truth for commands, flags, configuration, exit codes, and safety behavior. Do not rely on memory or duplicate its detailed specification in this skill.
 
-- For command discovery and shared running or package information, read [`README.md`](../../../docs/references/README.md).
+- For command discovery and shared running or package information, read [`docs/references/README.md`](../../../docs/references/README.md).
 - For help, list, branch, remove, reset, init or `gw` migration, and version questions, read [`help.md`](../../../docs/references/help.md), [`list.md`](../../../docs/references/list.md), [`branch.md`](../../../docs/references/branch.md), [`remove.md`](../../../docs/references/remove.md), [`reset.md`](../../../docs/references/reset.md), [`init.md`](../../../docs/references/init.md), or [`version.md`](../../../docs/references/version.md), respectively.
 - For unknown or delegated commands, read [`git-worktree.md`](../../../docs/references/git-worktree.md).
 

@@ -4,7 +4,7 @@ All documentation must be written in English.
 
 ## Project Overview
 
-`grape` is a Go CLI for `git worktree` workflows. Its entry point is `cmd/grape`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
+`grape` is a Git wrapper designed for use by coding agents, with a focus on agent-friendly `git worktree` workflows. Its entry point is `cmd/grape`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
 
 See `README.md` and `docs/references/` for user-facing documentation.
 
