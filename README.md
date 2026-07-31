@@ -1,10 +1,14 @@
 # grape
 
+## Overview
+
 `grape` is a Git wrapper designed for use by coding agents.
 
 It provides agent-friendly `git worktree` workflows, including formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
-## Installation
+## Setup
+
+### Installation
 
 The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
@@ -40,7 +44,7 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Initialize Config
+### Initialize Config
 
 From a directory containing `grape.example.json`, run:
 
@@ -78,11 +82,9 @@ grape prune
 grape list --porcelain
 ```
 
-### Reference
-
 See the [command reference](.codex/skills/grape-usage/references/README.md) for all commands, options, and safety behavior.
 
-### Reset Config
+### Reset Worktrees
 
 `grape reset` reads `grape.json` by default.
 
