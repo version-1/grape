@@ -113,18 +113,18 @@ Usage:
   grape
   grape list
   grape branch <branch-name>
-	grape remove [--regex|-r] <path-prefix-or-pattern>
-	grape reset [--config|-c <path>]
-	grape init
-	grape version
+  grape remove [--regex|-r] <path-prefix-or-pattern>
+  grape reset [--config|-c <path>]
+  grape init
+  grape version
   grape help
 
 Commands:
   list      Show worktree path, branch, and HEAD in a colored table.
   branch    Show worktrees that reference the given local branch.
-	remove    Remove matching worktrees and their local branches.
-	reset     Recreate worktrees from config after removing non-default worktrees and local branches.
-	init      Create ~/.grape/grape.json from grape.example.json.
+  remove    Remove matching worktrees and their local branches.
+  reset     Recreate worktrees from config after removing non-default worktrees and local branches.
+  init      Create grape.json in the resolved config home from grape.example.json.
   version   Show the build version and commit hash.
   help      Show this help.
 

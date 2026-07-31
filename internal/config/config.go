@@ -76,6 +76,10 @@ func Initialize(examplePath string, destination string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
+	return initializeConfigFile(destination, data, (*os.File).Write)
+}
+
+func initializeConfigFile(destination string, data []byte, write func(*os.File, []byte) (int, error)) error {
 	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
@@ -84,16 +88,21 @@ func Initialize(examplePath string, destination string) error {
 		return fmt.Errorf("create config: %w", err)
 	}
 
-	if _, err := file.Write(data); err != nil {
-		closeErr := file.Close()
-		if closeErr != nil {
-			return fmt.Errorf("write config: %w (close config: %v)", err, closeErr)
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = file.Close()
+			_ = os.Remove(destination)
 		}
+	}()
+
+	if _, err := write(file, data); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close config: %w", err)
 	}
+	initialized = true
 	return nil
 }
 
