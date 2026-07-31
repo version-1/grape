@@ -6,7 +6,7 @@ All documentation must be written in English.
 
 `grape` is a Go CLI for `git worktree` workflows. Its entry point is `cmd/grape`; core responsibilities are separated into `internal/app`, `internal/config`, `internal/ui`, and `internal/worktree`.
 
-See `README.md` and `REFERENCE.md` for user-facing documentation.
+See `README.md`, `docs/reference.md`, and `.codex/skills/grape-usage/references/` for user-facing documentation.
 
 ## Development Rules
 
@@ -33,5 +33,5 @@ After making changes, run tests for the affected package and `go test ./...`.
 ## Change Checklist
 
 - Format Go code with `gofmt`.
-- When CLI behavior changes, update its tests, `README.md`, and `REFERENCE.md`.
+- When CLI behavior changes, update its tests, `README.md`, `docs/reference.md`, and `.codex/skills/grape-usage/references/`.
 - For deletion-related changes, confirm that the main working tree and the branch checked out there remain excluded.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grape Usage"
+  short_description: "Explain grape commands from the canonical reference"
+  default_prompt: "Use $grape-usage to explain how to use grape for my task."
