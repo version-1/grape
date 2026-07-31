@@ -146,6 +146,7 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	assertContains(t, stdout.String(), "Usage:")
+	assertContains(t, stdout.String(), "grape init")
 	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
 	assertContains(t, stdout.String(), "$GRAPE_HOME/grape.json")
 	if runner.args != nil {
@@ -180,6 +181,88 @@ func TestRunVersionShowsBuildInfo(t *testing.T) {
 	}
 	if got, want := stdout.String(), "grape 0.1.0 (abc1234)\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunInitCreatesConfigInGrapeHome(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	want := []byte(`{"worktrees":[]}`)
+	if err := os.WriteFile(examplePath, want, 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	app := New(&fakeClient{}, &fakeRunner{}, nil).
+		WithExampleConfigPath(examplePath).
+		WithPathResolver(config.PathResolver{
+			Env:      func(string) string { return "" },
+			UserHome: func() (string, error) { return temporaryDir, nil },
+		})
+
+	code := app.Run(context.Background(), []string{"init"}, nil, stdout, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	destination := filepath.Join(temporaryDir, ".grape", "grape.json")
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want %q", got, want)
+	}
+	assertContains(t, stdout.String(), destination)
+}
+
+func TestRunInitDoesNotOverwriteExistingConfig(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	if err := os.WriteFile(examplePath, []byte(`{"worktrees":["example"]}`), 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+	destination := filepath.Join(temporaryDir, ".grape", "grape.json")
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		t.Fatalf("create config directory: %v", err)
+	}
+	want := []byte(`{"worktrees":["existing"]}`)
+	if err := os.WriteFile(destination, want, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	stderr := &bytes.Buffer{}
+	app := New(&fakeClient{}, &fakeRunner{}, nil).
+		WithExampleConfigPath(examplePath).
+		WithPathResolver(config.PathResolver{
+			Env:      func(string) string { return "" },
+			UserHome: func() (string, error) { return temporaryDir, nil },
+		})
+
+	code := app.Run(context.Background(), []string{"init"}, nil, io.Discard, stderr)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want existing value %q", got, want)
+	}
+	assertContains(t, stderr.String(), "config already exists")
+}
+
+func TestRunInitRejectsArguments(t *testing.T) {
+	stderr := &bytes.Buffer{}
+	app := New(&fakeClient{}, &fakeRunner{}, nil)
+
+	code := app.Run(context.Background(), []string{"init", "extra"}, nil, io.Discard, stderr)
+
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	if got, want := stderr.String(), "grape: usage: grape init\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
 

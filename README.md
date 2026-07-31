@@ -60,6 +60,7 @@ export PATH="$HOME/.local/bin:$PATH"
 | `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
+| `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
 | `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `grape version` | Show the build version and commit hash. |
 | `grape help` | Show command help. |
@@ -70,6 +71,16 @@ Unknown commands are delegated to `git worktree`.
 go run ./cmd/grape prune
 go run ./cmd/grape list --porcelain
 ```
+
+## Initialize Config
+
+From a directory containing `grape.example.json`, run:
+
+```sh
+grape init
+```
+
+This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
 
 ## Reset Config
 

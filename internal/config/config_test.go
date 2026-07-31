@@ -189,6 +189,52 @@ func TestResolveConfigPathReturnsStatError(t *testing.T) {
 	}
 }
 
+func TestInitializeCreatesConfig(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	destination := filepath.Join(temporaryDir, ".grape", "grape.json")
+	want := []byte(`{"worktrees":[]}`)
+	if err := os.WriteFile(examplePath, want, 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+
+	if err := Initialize(examplePath, destination); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want %q", got, want)
+	}
+}
+
+func TestInitializeDoesNotOverwriteExistingConfig(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	destination := filepath.Join(temporaryDir, "grape.json")
+	if err := os.WriteFile(examplePath, []byte(`{"worktrees":["example"]}`), 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+	want := []byte(`{"worktrees":["existing"]}`)
+	if err := os.WriteFile(destination, want, 0o600); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	err := Initialize(examplePath, destination)
+	if !errors.Is(err, ErrConfigAlreadyExists) {
+		t.Fatalf("Initialize() error = %v, want ErrConfigAlreadyExists", err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want existing value %q", got, want)
+	}
+}
+
 func assertContains(t *testing.T, got string, want string) {
 	t.Helper()
 	if !strings.Contains(got, want) {

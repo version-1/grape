@@ -17,6 +17,8 @@ type ResetConfig struct {
 	Worktrees     []worktree.ConfiguredItem `json:"worktrees"`
 }
 
+var ErrConfigAlreadyExists = errors.New("config already exists")
+
 type PathResolver struct {
 	Stat     func(string) (os.FileInfo, error)
 	Env      func(string) string
@@ -60,6 +62,39 @@ func (r PathResolver) GrapeHome() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".grape"), nil
+}
+
+// Initialize writes the example configuration to destination without replacing
+// an existing configuration file.
+func Initialize(examplePath string, destination string) error {
+	data, err := os.ReadFile(examplePath)
+	if err != nil {
+		return fmt.Errorf("read example config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return ErrConfigAlreadyExists
+		}
+		return fmt.Errorf("create config: %w", err)
+	}
+
+	if _, err := file.Write(data); err != nil {
+		closeErr := file.Close()
+		if closeErr != nil {
+			return fmt.Errorf("write config: %w (close config: %v)", err, closeErr)
+		}
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close config: %w", err)
+	}
+	return nil
 }
 
 func ReadResetConfig(path string, readFile ReadFileFunc) (ResetConfig, error) {
