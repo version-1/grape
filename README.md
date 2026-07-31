@@ -136,4 +136,4 @@ This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `
 
 `reset` is destructive. It removes worktrees and local branches except the default branch before creating configured worktrees.
 
-See the [command reference](docs/references/README.md) for the full command reference.
+See the [command reference](docs/reference.md) for the full command reference.
