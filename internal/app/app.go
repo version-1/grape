@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/version-1/grape/internal/config"
@@ -19,23 +20,30 @@ type WorktreeRunner interface {
 }
 
 type App struct {
-	client       worktree.Client
-	runner       WorktreeRunner
-	readFile     config.ReadFileFunc
-	pathResolver config.PathResolver
-	version      string
-	commit       string
+	client            worktree.Client
+	runner            WorktreeRunner
+	readFile          config.ReadFileFunc
+	pathResolver      config.PathResolver
+	exampleConfigPath string
+	version           string
+	commit            string
 }
 
 func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFileFunc) App {
 	return App{
-		client:       client,
-		runner:       runner,
-		readFile:     readFile,
-		pathResolver: config.DefaultPathResolver(),
-		version:      "dev",
-		commit:       "unknown",
+		client:            client,
+		runner:            runner,
+		readFile:          readFile,
+		pathResolver:      config.DefaultPathResolver(),
+		exampleConfigPath: "grape.example.json",
+		version:           "dev",
+		commit:            "unknown",
 	}
+}
+
+func (a App) WithExampleConfigPath(path string) App {
+	a.exampleConfigPath = path
+	return a
 }
 
 func (a App) WithPathResolver(pathResolver config.PathResolver) App {
@@ -63,6 +71,8 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 		return a.runHelp(stdout)
 	case "version":
 		return a.runVersion(stdout)
+	case "init":
+		return a.runInit(args[1:], stdout, stderr)
 	case "list":
 		if len(args) == 1 {
 			return a.runList(ctx, stdout, stderr)
@@ -105,6 +115,7 @@ Usage:
   grape branch <branch-name>
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
+  grape init
   grape version
   grape help
 
@@ -113,6 +124,7 @@ Commands:
   branch    Show worktrees that reference the given local branch.
   remove    Remove matching worktrees and their local branches.
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
+  init      Create grape.json in the resolved config home from grape.example.json.
   version   Show the build version and commit hash.
   help      Show this help.
 
@@ -129,6 +141,31 @@ Safety:
 
 Unknown commands are delegated to git worktree.
 `, "\n")
+}
+
+func (a App) runInit(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "grape: usage: grape init")
+		return 2
+	}
+
+	grapeHome, err := a.pathResolver.GrapeHome()
+	if err != nil {
+		fmt.Fprintf(stderr, "grape: resolve config directory: %v\n", err)
+		return 1
+	}
+	destination := filepath.Join(grapeHome, "grape.json")
+	if err := config.Initialize(a.exampleConfigPath, destination); err != nil {
+		if errors.Is(err, config.ErrConfigAlreadyExists) {
+			fmt.Fprintf(stderr, "grape: config already exists: %s\n", destination)
+			return 1
+		}
+		fmt.Fprintf(stderr, "grape: initialize config: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Created config at %s\n", destination)
+	return 0
 }
 
 func (a App) runList(ctx context.Context, stdout io.Writer, stderr io.Writer) int {

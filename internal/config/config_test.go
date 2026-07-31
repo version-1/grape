@@ -189,6 +189,72 @@ func TestResolveConfigPathReturnsStatError(t *testing.T) {
 	}
 }
 
+func TestInitializeCreatesConfig(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	destination := filepath.Join(temporaryDir, ".grape", "grape.json")
+	want := []byte(`{"worktrees":[]}`)
+	if err := os.WriteFile(examplePath, want, 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+
+	if err := Initialize(examplePath, destination); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want %q", got, want)
+	}
+}
+
+func TestInitializeDoesNotOverwriteExistingConfig(t *testing.T) {
+	temporaryDir := t.TempDir()
+	examplePath := filepath.Join(temporaryDir, "grape.example.json")
+	destination := filepath.Join(temporaryDir, "grape.json")
+	if err := os.WriteFile(examplePath, []byte(`{"worktrees":["example"]}`), 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+	want := []byte(`{"worktrees":["existing"]}`)
+	if err := os.WriteFile(destination, want, 0o600); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	err := Initialize(examplePath, destination)
+	if !errors.Is(err, ErrConfigAlreadyExists) {
+		t.Fatalf("Initialize() error = %v, want ErrConfigAlreadyExists", err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("config = %q, want existing value %q", got, want)
+	}
+}
+
+func TestInitializeRemovesPartialConfigAfterWriteFailure(t *testing.T) {
+	temporaryDir := t.TempDir()
+	destination := filepath.Join(temporaryDir, "grape.json")
+	writeErr := errors.New("write failed")
+
+	err := initializeConfigFile(destination, []byte(`{"worktrees":[]}`), func(file *os.File, _ []byte) (int, error) {
+		if _, err := file.Write([]byte("partial")); err != nil {
+			t.Fatalf("write partial config: %v", err)
+		}
+		return 0, writeErr
+	})
+
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("initializeConfigFile() error = %v, want %v", err, writeErr)
+	}
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Stat(%q) error = %v, want os.ErrNotExist", destination, err)
+	}
+}
+
 func assertContains(t *testing.T, got string, want string) {
 	t.Helper()
 	if !strings.Contains(got, want) {
