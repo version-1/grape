@@ -11,7 +11,7 @@ func TestFormatWorktreeList(t *testing.T) {
 	got := FormatWorktreeList([]worktree.Worktree{
 		{Path: "/repo", Head: "1111111111111111111111111111111111111111", Branch: "main"},
 		{Path: "/repo-detached", Head: "2222222222222222222222222222222222222222"},
-	})
+	}, false)
 
 	assertContains(t, got, "PATH")
 	assertContains(t, got, "BRANCH")

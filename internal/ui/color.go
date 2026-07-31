@@ -1,25 +1,19 @@
 package ui
 
-import "strings"
+import "github.com/version-1/grape/internal/color"
 
-type Color string
+type Color = color.Code
 
 const (
-	Reset Color = "\033[0m"
-	Red   Color = "\033[31m"
-	Green Color = "\033[32m"
-	Blue  Color = "\033[34m"
-	Cyan  Color = "\033[36m"
-	Bold  Color = "\033[1m"
-	Dim   Color = "\033[2m"
+	Red    = color.Red
+	Green  = color.Green
+	Yellow = color.Yellow
+	Blue   = color.Blue
+	Cyan   = color.Cyan
+	Bold   = color.Bold
+	Dim    = color.Dim
 )
 
-func Paint(value string, colors ...Color) string {
-	var builder strings.Builder
-	for _, color := range colors {
-		builder.WriteString(string(color))
-	}
-	builder.WriteString(value)
-	builder.WriteString(string(Reset))
-	return builder.String()
+func Paint(enabled bool, value string, colors ...Color) string {
+	return color.Paint(enabled, value, colors...)
 }

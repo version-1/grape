@@ -1,4 +1,7 @@
 {
+  "push": {
+    "protected_branches": ["main", "master", "release/*"]
+  },
   "default_branch": "main",
   "worktrees": [
     {

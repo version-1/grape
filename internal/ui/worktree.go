@@ -7,7 +7,7 @@ import (
 	"github.com/version-1/grape/internal/worktree"
 )
 
-func FormatWorktreeList(worktrees []worktree.Worktree) string {
+func FormatWorktreeList(worktrees []worktree.Worktree, colorEnabled bool) string {
 	pathWidth := len("PATH")
 	branchWidth := len("BRANCH")
 	for _, item := range worktrees {
@@ -19,17 +19,17 @@ func FormatWorktreeList(worktrees []worktree.Worktree) string {
 	fmt.Fprintf(
 		&builder,
 		"%s  %s  %s\n",
-		Paint(padRight("PATH", pathWidth), Bold),
-		Paint(padRight("BRANCH", branchWidth), Bold),
-		Paint("HEAD", Bold),
+		Paint(colorEnabled, padRight("PATH", pathWidth), Bold),
+		Paint(colorEnabled, padRight("BRANCH", branchWidth), Bold),
+		Paint(colorEnabled, "HEAD", Bold),
 	)
 	for _, item := range worktrees {
 		fmt.Fprintf(
 			&builder,
 			"%s  %s  %s\n",
-			Paint(padRight(item.Path, pathWidth), Cyan),
-			Paint(padRight(displayBranch(item), branchWidth), Green),
-			Paint(shortHead(item.Head), Dim),
+			Paint(colorEnabled, padRight(item.Path, pathWidth), Cyan),
+			Paint(colorEnabled, padRight(displayBranch(item), branchWidth), Green),
+			Paint(colorEnabled, shortHead(item.Head), Dim),
 		)
 	}
 	return builder.String()
