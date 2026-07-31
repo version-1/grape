@@ -1,22 +1,14 @@
 # grape
 
+## Overview
+
 `grape` is a Git wrapper designed for use by coding agents.
 
 It provides agent-friendly `git worktree` workflows, including formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
-## Usage
+## Setup
 
-```sh
-grape list
-```
-
-Build a local binary with:
-
-```sh
-make build
-```
-
-## Installation
+### Installation
 
 The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
@@ -52,27 +44,7 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Commands
-
-| Command | Description |
-| --- | --- |
-| `grape list` | Show worktree path, branch, and HEAD in a colored table. |
-| `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
-| `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
-| `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
-| `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
-| `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
-| `grape version` | Show the build version and commit hash. |
-| `grape help` | Show command help. |
-
-Unknown commands are delegated to `git worktree`.
-
-```sh
-grape prune
-grape list --porcelain
-```
-
-## Initialize Config
+### Initialize Config
 
 From a directory containing `grape.example.json`, run:
 
@@ -82,24 +54,49 @@ grape init
 
 This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
 
-## Reset Config
+## Usage
 
-`grape reset` reads `grape.json` by default.
+```sh
+grape list
+```
 
-`grape reset` never removes the main working tree or the branch checked out by the main working tree.
-Before deleting anything, `grape reset` prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
+Build a local binary with:
 
-`grape remove` also prints its matching worktrees and branches, then continues only after `y` or `yes` confirmation.
+```sh
+make build
+```
 
-Config path resolution:
+### Commands
+
+| Command | Description |
+| --- | --- |
+| `grape list` | Show worktree path, branch, and HEAD in a colored table. |
+| `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
+| `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
+| `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
+
+Unknown commands are delegated to `git worktree`.
+
+```sh
+grape prune
+grape list --porcelain
+```
+
+See the [command reference](.codex/skills/grape-usage/references/README.md) for all commands, options, and safety behavior.
+
+### Reset Worktrees
+
+`grape reset` rebuilds the repository's non-default worktrees from a configuration file. It removes the existing non-default worktrees and local branches, then creates the worktrees declared in the configuration.
+
+This provides a repeatable way to restore a known worktree layout for coding-agent sessions without manually removing and recreating each worktree.
+
+`grape reset` is destructive, but never removes the main working tree or the branch checked out there. Before deleting anything, it prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
+
+By default, `grape reset` resolves `grape.json` in this order:
 
 1. `./grape.json`
 2. `$GRAPE_HOME/grape.json`
 3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
-
-### Migrating from gw
-
-This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `GW_HOME` with `GRAPE_HOME`, and move `~/.gw` to `~/.grape`. The old names are not resolved automatically.
 
 ```json
 {
@@ -133,7 +130,3 @@ This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `
   ]
 }
 ```
-
-`reset` is destructive. It removes worktrees and local branches except the default branch before creating configured worktrees.
-
-See the [command reference](docs/reference.md) for the full command reference.
