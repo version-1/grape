@@ -13,12 +13,13 @@ Before answering, read the canonical [REFERENCE.md](../../../REFERENCE.md). Trea
 
 ## Answer workflow
 
-1. Identify whether the user needs to inspect worktrees, find a branch, add or delegate a Git worktree operation, remove worktrees, reset from configuration, or check version/help.
+1. Identify whether the user needs to inspect worktrees, find a branch, initialize configuration, migrate from `gw`, add or delegate a Git worktree operation, remove worktrees, reset from configuration, or check version/help.
 2. Give the smallest applicable command example. Use `go run ./cmd/grape ...` for a repository checkout, or `grape ...` when the binary is installed.
 3. For reset questions, describe the relevant `grape.json` fields and config lookup behavior from `REFERENCE.md`. Include a minimal JSON example only when it helps the user.
-4. For unrecognized grape subcommands, explain that grape delegates them to `git worktree` and give the appropriate `grape` invocation.
-5. State important prerequisites, outcomes, and limitations that apply to the requested command.
+4. For initialization or migration questions, use the `grape init` and `gw` migration behavior in `REFERENCE.md`; do not infer compatibility with former `gw` locations.
+5. For unrecognized grape subcommands, explain that grape delegates them to `git worktree` and give the appropriate `grape` invocation.
+6. State important prerequisites, outcomes, and limitations that apply to the requested command.
 
 ## Safety
 
-Treat `grape remove` and `grape reset` as destructive. Clearly say that they delete matching or non-default worktrees and associated local branches, show targets, and require `y` or `yes` confirmation. Remind the user to verify the repository, prefix or regular expression, and reset configuration before proceeding. Do not imply that the main working tree or its checked-out branch can be deleted.
+Treat `grape remove` and `grape reset` as destructive. Explain their scopes separately: `remove` deletes the matching worktrees and their associated local branches, while `reset` can delete all local branches except the branch checked out in the main working tree, as well as non-default worktrees. Both commands show targets and require `y` or `yes` confirmation. Remind the user to verify the repository, prefix or regular expression, and reset configuration before proceeding. Do not imply that the main working tree or its checked-out branch can be deleted.
