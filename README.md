@@ -97,10 +97,6 @@ Config path resolution:
 2. `$GRAPE_HOME/grape.json`
 3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
 
-### Migrating from gw
-
-This is a breaking rename from `gw`. Rename `gw.json` to `grape.json`, replace `GW_HOME` with `GRAPE_HOME`, and move `~/.gw` to `~/.grape`. The old names are not resolved automatically.
-
 ```json
 {
   "default_branch": "main",
