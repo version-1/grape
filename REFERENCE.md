@@ -2,6 +2,8 @@
 
 `grape` is a Git wrapper for safe, agent-friendly worktree workflows.
 
+The canonical, task-oriented reference is bundled with the [`grape-usage` skill](.codex/skills/grape-usage/references/README.md). This file is retained as a standalone compatibility reference.
+
 ## Commands
 
 ### `grape` and `grape list`

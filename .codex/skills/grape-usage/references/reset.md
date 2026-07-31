@@ -14,12 +14,17 @@ The default config file is `grape.json`. When `--config` is omitted, paths are r
 2. `$GRAPE_HOME/grape.json`
 3. `~/.grape/grape.json` when `GRAPE_HOME` is unset
 
+The selected file is decoded strictly before Git inspection. Unknown fields, malformed JSON, invalid values, and unreadable files are errors. Reset additionally requires a non-empty, valid `worktrees` list; a push-only config is valid globally but not sufficient for reset.
+
 `reset` is destructive. It deletes all non-default worktrees and local branches, but never the main working tree or the branch checked out there. Before deleting anything, it lists the targets and continues only after `y` or `yes` confirmation. Verify the target repository and configuration file before running it.
 
 ## Reset Configuration
 
 ```json
 {
+  "push": {
+    "protected_branches": ["main", "master", "release/*"]
+  },
   "default_branch": "main",
   "worktrees": [
     {

@@ -108,6 +108,41 @@ The complete JSON document is decoded strictly for `list`, `branch`, `remove`, `
 
 `reset` requires a non-empty `worktrees` list. Other built-in commands may use a push-only config without `worktrees`.
 
+Example reset configuration:
+
+```json
+{
+  "default_branch": "main",
+  "worktrees": [
+    {
+      "path": ".worktrees/1",
+      "branch": "worktrees/1",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/2",
+      "branch": "worktrees/2",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/3",
+      "branch": "worktrees/3",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/4",
+      "branch": "worktrees/4",
+      "start_point": "origin/main"
+    },
+    {
+      "path": ".worktrees/5",
+      "branch": "worktrees/5",
+      "start_point": "origin/main"
+    }
+  ]
+}
+```
+
 ## Safe Push
 
 Only these forms are accepted:
@@ -144,39 +179,5 @@ grape: warning: grape.json not found; using default protected branches: main, ma
 Grape-generated diagnostics are written to stderr. Informational messages use `grape:`, warnings use `grape: warning:`, and errors use `grape:`. Warning and error prefixes are colored only when stderr is a terminal.
 
 Tables, previews, prompts, and progress output determine color independently from stdout. Color is disabled for pipes and redirects and whenever `NO_COLOR` is set. Raw Git subprocess streams are not recolored.
-```json
-{
-  "default_branch": "main",
-  "worktrees": [
-    {
-      "path": ".worktrees/1",
-      "branch": "worktrees/1",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/2",
-      "branch": "worktrees/2",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/3",
-      "branch": "worktrees/3",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/4",
-      "branch": "worktrees/4",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/5",
-      "branch": "worktrees/5",
-      "start_point": "origin/main"
-    }
-  ]
-}
-```
 
-`reset` is destructive. It removes worktrees and local branches except the default branch before creating configured worktrees.
-
-See the [command reference](REFERENCE.md) for the full command reference.
+See the [canonical command reference](.codex/skills/grape-usage/references/README.md) for complete command behavior.
