@@ -10,7 +10,7 @@ See `README.md`, `docs/reference.md`, and `.codex/skills/grape-usage/references/
 
 ## Development Rules
 
-- Use Go 1.22.
+- Use Go 1.26.
 - Preserve existing package responsibilities: CLI control belongs in `internal/app`, and Git operations belong in `internal/worktree`.
 - When changing public CLI arguments, exit codes, or the configuration format, verify compatibility and update documentation.
 - `remove` and `reset` delete worktrees and local branches. Do not weaken target selection or confirmation safeguards.
