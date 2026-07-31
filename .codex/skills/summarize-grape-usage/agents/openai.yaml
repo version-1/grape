@@ -1,0 +1,4 @@
+interface:
+  display_name: "Summarize Grape Usage"
+  short_description: "Summarize grape commands from the canonical reference"
+  default_prompt: "Use $summarize-grape-usage to explain how to use grape for my task."
