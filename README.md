@@ -52,6 +52,16 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+## Initialize Config
+
+From a directory containing `grape.example.json`, run:
+
+```sh
+grape init
+```
+
+This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
+
 ## Commands
 
 | Command | Description |
@@ -71,16 +81,6 @@ Unknown commands are delegated to `git worktree`.
 grape prune
 grape list --porcelain
 ```
-
-## Initialize Config
-
-From a directory containing `grape.example.json`, run:
-
-```sh
-grape init
-```
-
-This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
 
 ## Reset Config
 
