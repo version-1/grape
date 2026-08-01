@@ -2,6 +2,8 @@
 
 The canonical `grape` command reference, including policy-gated rebase, safe push, strict configuration, and output behavior, is bundled with the [`grape-usage` skill](../.codex/skills/grape-usage/references/README.md).
 
+The canonical [`grape.json` configuration reference](configuration.md) documents every field, default, validation rule, discovery rule, and branch policy.
+
 Built-in command pages:
 
 - [`grape rebase`](../.codex/skills/grape-usage/references/rebase.md)
