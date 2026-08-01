@@ -2,7 +2,7 @@
 
 `grape` is a Go CLI for `git worktree` workflows.
 
-It delegates standard `git worktree` operations and adds guarded current-branch push, a readable worktree list, reverse branch lookup, prefix or regular-expression removal, and configuration-driven reset.
+It delegates standard `git worktree` operations and adds policy-gated current-branch rebase, guarded current-branch push, a readable worktree list, reverse branch lookup, prefix or regular-expression removal, and configuration-driven reset.
 
 ## Running grape
 
@@ -20,6 +20,7 @@ Build `grape` with `make build`. The executable entry point is `./cmd/grape`.
 - [`grape remove`](remove.md): remove matching worktrees and their local branches.
 - [`grape reset`](reset.md): recreate configured worktrees after removing non-default worktrees and local branches.
 - [`grape push`](push.md): safely push the current symbolic branch to `origin`.
+- [`grape rebase`](rebase.md): rebase the current symbolic branch when allowed by config.
 - [`grape init`](init.md): create an initial configuration file.
 - [`grape version`](version.md): display build version information.
 - [`git worktree` commands](git-worktree.md): delegated commands not implemented by `grape`.
@@ -35,5 +36,5 @@ internal/color/          # output-specific terminal and NO_COLOR policy
 internal/config/         # strict shared config schema and command validation
 internal/logging/        # grape-generated stderr diagnostics
 internal/ui/             # colored output and worktree table formatting
-internal/worktree/       # Git and push adapter, worktree parser, and matcher
+internal/worktree/       # Git, push, and rebase adapter, worktree parser, and matcher
 ```

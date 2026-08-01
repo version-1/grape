@@ -4,7 +4,7 @@
 
 `grape` is a Git wrapper designed for use by coding agents.
 
-It provides agent-friendly `git worktree` workflows, including safe current-branch pushes, formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
+It provides agent-friendly `git worktree` workflows, including policy-gated rebases, safe current-branch pushes, formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
 ## Setup
 
@@ -76,6 +76,8 @@ make build
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `grape push` | Push the current branch with `git push origin HEAD:<current-branch>`. |
 | `grape push --force-with-lease` | Push the current branch with Git's exact `--force-with-lease` option. |
+| `grape rebase` | Rebase the current branch onto its configured upstream when allowed by config. |
+| `grape rebase origin/main` | Rebase the current branch onto one explicit upstream when allowed by config. |
 | `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
 | `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `grape version` | Show the build version and commit hash. |
@@ -104,9 +106,11 @@ By default, `grape reset` resolves `grape.json` in this order:
 2. `$GRAPE_HOME/grape.json`
 3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
 
-The complete JSON document is decoded strictly for `list`, `branch`, `remove`, `reset`, and `push`. Unknown top-level fields, unknown nested fields, malformed JSON, unreadable selected files, and invalid values stop the command before Git is inspected. `help`, `version`, `init`, and commands delegated to `git worktree` do not validate config.
+The complete JSON document is decoded strictly for `list`, `branch`, `remove`, `reset`, `push`, and `rebase`. Unknown top-level fields, unknown nested fields, malformed JSON, unreadable selected files, and invalid values stop the command before Git is inspected. `help`, `version`, `init`, and commands delegated to `git worktree` do not validate config.
 
 `reset` requires a non-empty `worktrees` list. Other built-in commands may use a push-only config without `worktrees`.
+
+Unlike other configuration-aware commands, `rebase` requires an existing config file because no safe default allow policy exists.
 
 Example reset configuration:
 
@@ -142,6 +146,32 @@ Example reset configuration:
   ]
 }
 ```
+
+## Policy-Gated Rebase
+
+Only these forms are accepted:
+
+```sh
+grape rebase
+grape rebase origin/main
+grape rebase --config path/to/grape.json origin/main
+```
+
+Without an upstream argument, grape executes `git rebase` and lets Git use the current branch's configured upstream. With one upstream, it executes `git rebase <upstream>`. The allow policy always applies to the complete short name of the current checked-out branch, never to the upstream argument.
+
+Configure allowed current branches with case-sensitive Go `path.Match` patterns:
+
+```json
+{
+  "rebase": {
+    "allowed_branches": ["feature/*", "worktrees/*"]
+  }
+}
+```
+
+A missing `rebase` object, missing `allowed_branches`, or empty list denies every branch. Every pattern is validated before Git is inspected, so a malformed pattern invalidates the config even when an earlier pattern would match. `*` and `?` do not cross `/`, and `**` has no recursive special meaning.
+
+Detached HEAD and denied branches exit 1 without running rebase. Missing or malformed config, invalid field types or glob patterns, unknown options, Git rebase flags, and multiple upstream arguments exit 2 without running rebase. Git's stdin, stdout, stderr, and exit code pass through unchanged. Conflicts are left in place; use `git rebase --continue`, `git rebase --abort`, or `git rebase --skip` directly.
 
 ## Safe Push
 

@@ -117,6 +117,8 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.
 			return code
 		}
 		return a.runPush(ctx, args[1:], cfg, stdout, stderr, logger)
+	case "rebase":
+		return a.runRebase(ctx, args[1:], stdin, stdout, stderr, logger)
 	}
 
 	if err := a.runner.Run(ctx, args, stdin, stdout, stderr); err != nil {
@@ -168,6 +170,7 @@ Usage:
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
   grape push [--force-with-lease]
+  grape rebase [--config|-c <path>] [<upstream>]
   grape init
   grape version
   grape help
@@ -178,6 +181,7 @@ Commands:
   remove    Remove matching worktrees and their local branches.
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
   push      Safely push the current branch to origin.
+  rebase    Rebase the current branch when allowed by config.
   init      Create grape.json in the resolved config home from grape.example.json.
   version   Show the build version and commit hash.
   help      Show this help.
@@ -187,11 +191,14 @@ Config:
     1. ./grape.json
     2. $GRAPE_HOME/grape.json
     3. ~/.grape/grape.json
-  Config is decoded strictly. Missing config uses protected defaults main and master.
+  Config is decoded strictly. Missing config uses protected defaults main and master,
+  except rebase, which requires an existing config file.
 
 Safety:
   push accepts no arguments or exactly --force-with-lease, always targets origin,
   and refuses protected branches.
+  rebase validates its complete allow policy before running git rebase.
+  Rebase continuation, abort, skip, and interactive modes require git directly.
   reset and remove never remove the main working tree.
   reset also keeps the branch checked out by the main working tree.
   reset shows deletion targets and continues only after y/yes confirmation.
@@ -392,6 +399,76 @@ func parsePushOptions(args []string) (bool, error) {
 	default:
 		return false, errors.New("usage: grape push [--force-with-lease]")
 	}
+}
+
+type rebaseOptions struct {
+	ConfigPath string
+	Upstream   string
+}
+
+func parseRebaseOptions(args []string) (rebaseOptions, error) {
+	flags := flag.NewFlagSet("rebase", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	configPath := flags.String("config", "", "path to grape rebase config")
+	flags.StringVar(configPath, "c", "", "path to grape rebase config")
+
+	if err := flags.Parse(args); err != nil {
+		return rebaseOptions{}, err
+	}
+	if flags.NArg() > 1 {
+		return rebaseOptions{}, errors.New("usage: grape rebase [--config|-c <path>] [<upstream>]")
+	}
+
+	options := rebaseOptions{ConfigPath: *configPath}
+	if flags.NArg() == 1 {
+		options.Upstream = flags.Arg(0)
+		if strings.HasPrefix(options.Upstream, "-") {
+			return rebaseOptions{}, errors.New("upstream must not begin with '-'")
+		}
+	}
+	return options, nil
+}
+
+func (a App) runRebase(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {
+	options, err := parseRebaseOptions(args)
+	if err != nil {
+		logger.Error("usage: grape rebase [--config|-c <path>] [<upstream>]")
+		return 2
+	}
+
+	discovery, err := a.pathResolver.Discover(options.ConfigPath)
+	if err != nil {
+		logger.Error("resolve config: %v", err)
+		return 2
+	}
+	if !discovery.Found {
+		logger.Error("rebase config not found: %s", discovery.Path)
+		return 2
+	}
+	cfg, err := config.ReadRebaseConfig(discovery.Path, a.readFile)
+	if err != nil {
+		logger.Error("read config: %v", err)
+		return 2
+	}
+
+	branch, err := a.client.CurrentBranch(ctx)
+	if err != nil {
+		logger.Error("current HEAD is detached or not in a git repository")
+		return 1
+	}
+	if !cfg.BranchAllowedForRebase(branch) {
+		logger.Error("rebase is not allowed for current branch: %s", branch)
+		return 1
+	}
+
+	if err := a.client.Rebase(ctx, options.Upstream, stdin, stdout, stderr); err != nil {
+		if exitErr, ok := err.(exitCodeError); ok {
+			return exitErr.ExitCode()
+		}
+		logger.Error("%v", err)
+		return 1
+	}
+	return 0
 }
 
 func (a App) runPush(ctx context.Context, args []string, cfg config.Config, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {

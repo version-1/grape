@@ -27,10 +27,15 @@ type Config struct {
 	DefaultBranch string                    `json:"default_branch,omitempty"`
 	Worktrees     []worktree.ConfiguredItem `json:"worktrees,omitempty"`
 	Push          *PushConfig               `json:"push,omitempty"`
+	Rebase        *RebaseConfig             `json:"rebase,omitempty"`
 }
 
 type PushConfig struct {
 	ProtectedBranches *[]string `json:"protected_branches,omitempty"`
+}
+
+type RebaseConfig struct {
+	AllowedBranches *[]string `json:"allowed_branches,omitempty"`
 }
 
 type Discovery struct {
@@ -190,9 +195,11 @@ func validateJSONValue(decoder *json.Decoder, location string) error {
 func allowedJSONField(location string, key string) bool {
 	switch {
 	case location == "$":
-		return key == "default_branch" || key == "worktrees" || key == "push"
+		return key == "default_branch" || key == "worktrees" || key == "push" || key == "rebase"
 	case location == "$.push":
 		return key == "protected_branches"
+	case location == "$.rebase":
+		return key == "allowed_branches"
 	case strings.HasPrefix(location, "$.worktrees[") && strings.HasSuffix(location, "]"):
 		return key == "path" || key == "branch" || key == "start_point"
 	default:
@@ -221,6 +228,11 @@ func (c Config) Validate() error {
 	}
 	if c.Push != nil && c.Push.ProtectedBranches != nil && len(*c.Push.ProtectedBranches) == 0 {
 		return errors.New("push.protected_branches must not be empty")
+	}
+	for i, pattern := range c.AllowedRebaseBranches() {
+		if _, err := path.Match(pattern, "branch"); err != nil {
+			return fmt.Errorf("rebase.allowed_branches[%d]: %w", i, err)
+		}
 	}
 	return nil
 }
@@ -272,6 +284,27 @@ func (c Config) BranchProtected(branch string) bool {
 		}
 	}
 	return false
+}
+
+func (c Config) AllowedRebaseBranches() []string {
+	if c.Rebase == nil || c.Rebase.AllowedBranches == nil {
+		return nil
+	}
+	return append([]string(nil), (*c.Rebase.AllowedBranches)...)
+}
+
+func (c Config) BranchAllowedForRebase(branch string) bool {
+	for _, pattern := range c.AllowedRebaseBranches() {
+		matched, _ := path.Match(pattern, branch)
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func ReadRebaseConfig(path string, readFile ReadFileFunc) (Config, error) {
+	return Read(path, readFile)
 }
 
 func ReadResetConfig(path string, readFile ReadFileFunc) (Config, error) {

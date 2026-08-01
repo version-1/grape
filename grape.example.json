@@ -2,6 +2,9 @@
   "push": {
     "protected_branches": ["main", "master", "release/*"]
   },
+  "rebase": {
+    "allowed_branches": ["feature/*", "worktrees/*"]
+  },
   "default_branch": "main",
   "worktrees": [
     {

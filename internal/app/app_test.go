@@ -61,6 +61,11 @@ type fakeClient struct {
 	pushErr       error
 	pushedBranch  string
 	pushedForce   bool
+	rebaseErr     error
+	rebasedOnto   string
+	rebaseStdin   io.Reader
+	rebaseStdout  io.Writer
+	rebaseStderr  io.Writer
 	gitCalls      []string
 }
 
@@ -90,6 +95,15 @@ func (c *fakeClient) Push(_ context.Context, branch string, force bool, _ io.Wri
 	c.pushedBranch = branch
 	c.pushedForce = force
 	return c.pushErr
+}
+
+func (c *fakeClient) Rebase(_ context.Context, upstream string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	c.gitCalls = append(c.gitCalls, "rebase")
+	c.rebasedOnto = upstream
+	c.rebaseStdin = stdin
+	c.rebaseStdout = stdout
+	c.rebaseStderr = stderr
+	return c.rebaseErr
 }
 
 func (c *fakeClient) ListWorktrees(context.Context) ([]worktree.Worktree, error) {
@@ -183,7 +197,9 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 	assertContains(t, stdout.String(), "Usage:")
 	assertContains(t, stdout.String(), "grape init")
 	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
+	assertContains(t, stdout.String(), "grape rebase [--config|-c <path>] [<upstream>]")
 	assertContains(t, stdout.String(), "$GRAPE_HOME/grape.json")
+	assertContains(t, stdout.String(), "except rebase, which requires an existing config file")
 	if runner.args != nil {
 		t.Fatalf("runner args = %#v, want nil", runner.args)
 	}
@@ -653,6 +669,160 @@ func TestRunPushAcceptsOnlyDocumentedForms(t *testing.T) {
 	}
 }
 
+func TestRunRebaseAcceptsOptionalUpstreamAndPreservesStreams(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		upstream string
+	}{
+		{"configured upstream", []string{"rebase", "origin/main"}, "origin/main"},
+		{"tracking upstream", []string{"rebase"}, ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test"}
+			stdin := strings.NewReader("input")
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+
+			code := withConfig(New(client, &fakeRunner{}, nil), `{"rebase":{"allowed_branches":["feature/*"]}}`).
+				Run(context.Background(), test.args, stdin, stdout, stderr)
+
+			if code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr)
+			}
+			if client.rebasedOnto != test.upstream {
+				t.Fatalf("upstream = %q, want %q", client.rebasedOnto, test.upstream)
+			}
+			if client.rebaseStdin != stdin || client.rebaseStdout != stdout || client.rebaseStderr != stderr {
+				t.Fatal("rebase streams were not preserved")
+			}
+			if !slices.Equal(client.gitCalls, []string{"current-branch", "rebase"}) {
+				t.Fatalf("git calls = %#v", client.gitCalls)
+			}
+		})
+	}
+}
+
+func TestRunRebaseRejectsInvalidArgumentsBeforeGit(t *testing.T) {
+	tests := [][]string{
+		{"rebase", "--continue"},
+		{"rebase", "--abort"},
+		{"rebase", "--skip"},
+		{"rebase", "-i", "main"},
+		{"rebase", "--unknown"},
+		{"rebase", "--", "--continue"},
+		{"rebase", "--", "-i"},
+		{"rebase", "main", "develop"},
+	}
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test"}
+			code := withConfig(New(client, &fakeRunner{}, nil), `{"rebase":{"allowed_branches":["feature/*"]}}`).
+				Run(context.Background(), args, nil, io.Discard, io.Discard)
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if len(client.gitCalls) != 0 {
+				t.Fatalf("git calls = %#v, want none", client.gitCalls)
+			}
+		})
+	}
+}
+
+func TestRunRebaseRejectsPolicyAndDetachedHEADBeforeRebase(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     string
+		client     *fakeClient
+		wantCode   int
+		wantStderr string
+		wantCalls  []string
+	}{
+		{"missing rebase", `{}`, &fakeClient{currentBranch: "feature/test"}, 1, "feature/test", []string{"current-branch"}},
+		{"missing allowed branches", `{"rebase":{}}`, &fakeClient{currentBranch: "feature/test"}, 1, "feature/test", []string{"current-branch"}},
+		{"empty policy", `{"rebase":{"allowed_branches":[]}}`, &fakeClient{currentBranch: "feature/test"}, 1, "feature/test", []string{"current-branch"}},
+		{"denied branch", `{"rebase":{"allowed_branches":["feature/*"]}}`, &fakeClient{currentBranch: "fix/test"}, 1, "fix/test", []string{"current-branch"}},
+		{"detached head", `{"rebase":{"allowed_branches":["feature/*"]}}`, &fakeClient{listErr: errors.New("detached")}, 1, "detached", []string{"current-branch"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stderr := &bytes.Buffer{}
+			code := withConfig(New(test.client, &fakeRunner{}, nil), test.config).
+				Run(context.Background(), []string{"rebase"}, nil, io.Discard, stderr)
+			if code != test.wantCode {
+				t.Fatalf("code = %d, want %d", code, test.wantCode)
+			}
+			assertContains(t, stderr.String(), test.wantStderr)
+			if !slices.Equal(test.client.gitCalls, test.wantCalls) {
+				t.Fatalf("git calls = %#v, want %#v", test.client.gitCalls, test.wantCalls)
+			}
+		})
+	}
+}
+
+func TestRunRebaseRequiresValidExistingConfigBeforeGit(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{"malformed JSON", `{"rebase":`},
+		{"invalid type", `{"rebase":{"allowed_branches":"feature/*"}}`},
+		{"invalid later glob", `{"rebase":{"allowed_branches":["feature/*","["]}}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test"}
+			code := withConfig(New(client, &fakeRunner{}, nil), test.config).
+				Run(context.Background(), []string{"rebase"}, nil, io.Discard, io.Discard)
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if len(client.gitCalls) != 0 {
+				t.Fatalf("git calls = %#v, want none", client.gitCalls)
+			}
+		})
+	}
+
+	client := &fakeClient{currentBranch: "feature/test"}
+	code := New(client, &fakeRunner{}, nil).
+		Run(context.Background(), []string{"rebase"}, nil, io.Discard, io.Discard)
+	if code != 2 {
+		t.Fatalf("missing config code = %d, want 2", code)
+	}
+	if len(client.gitCalls) != 0 {
+		t.Fatalf("missing config git calls = %#v, want none", client.gitCalls)
+	}
+}
+
+func TestRunRebaseUsesExplicitConfigAndPreservesGitExitCode(t *testing.T) {
+	client := &fakeClient{
+		currentBranch: "worktrees/3",
+		rebaseErr:     fakeExitError{code: 23},
+	}
+	application := New(client, &fakeRunner{}, func(path string) ([]byte, error) {
+		if path != "/tmp/rebase.json" {
+			t.Fatalf("path = %q, want explicit config", path)
+		}
+		return []byte(`{"rebase":{"allowed_branches":["worktrees/*"]}}`), nil
+	})
+
+	code := application.Run(
+		context.Background(),
+		[]string{"rebase", "--config", "/tmp/rebase.json", "origin/main"},
+		nil,
+		io.Discard,
+		io.Discard,
+	)
+
+	if code != 23 {
+		t.Fatalf("code = %d, want 23", code)
+	}
+	if client.rebasedOnto != "origin/main" {
+		t.Fatalf("upstream = %q, want origin/main", client.rebasedOnto)
+	}
+}
+
 func TestRunPushRefusesProtectedBranchesInBothModes(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -805,6 +975,7 @@ func TestGlobalConfigValidationAppliesToBuiltIns(t *testing.T) {
 		{"remove", "prefix"},
 		{"reset"},
 		{"push"},
+		{"rebase"},
 	}
 	for _, args := range tests {
 		t.Run(args[0], func(t *testing.T) {

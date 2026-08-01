@@ -438,6 +438,95 @@ func TestInitializeRemovesPartialConfigAfterWriteFailure(t *testing.T) {
 	}
 }
 
+func TestReadRebaseConfigPolicyMatching(t *testing.T) {
+	config, err := ReadRebaseConfig("grape.json", func(string) ([]byte, error) {
+		return []byte(`{"rebase":{"allowed_branches":["feature/*","worktrees/?"]}}`), nil
+	})
+	if err != nil {
+		t.Fatalf("ReadRebaseConfig() error = %v", err)
+	}
+
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"feature/test", true},
+		{"prefix-feature/test", false},
+		{"feature/test-suffix", true},
+		{"feature/team/test", false},
+		{"worktrees/3", true},
+		{"worktrees/33", false},
+	}
+	for _, test := range tests {
+		t.Run(test.branch, func(t *testing.T) {
+			if got := config.BranchAllowedForRebase(test.branch); got != test.want {
+				t.Fatalf("BranchAllowedForRebase(%q) = %t, want %t", test.branch, got, test.want)
+			}
+		})
+	}
+}
+
+func TestReadRebaseConfigMissingAndEmptyPolicyDenyAll(t *testing.T) {
+	configs := []string{
+		`{}`,
+		`{"rebase":{}}`,
+		`{"rebase":{"allowed_branches":[]}}`,
+	}
+	for _, contents := range configs {
+		config, err := ReadRebaseConfig("grape.json", func(string) ([]byte, error) {
+			return []byte(contents), nil
+		})
+		if err != nil {
+			t.Fatalf("ReadRebaseConfig(%s) error = %v", contents, err)
+		}
+		if config.BranchAllowedForRebase("feature/test") {
+			t.Fatalf("config %s allowed feature/test", contents)
+		}
+	}
+}
+
+func TestReadRebaseConfigValidatesEveryPattern(t *testing.T) {
+	_, err := ReadRebaseConfig("grape.json", func(string) ([]byte, error) {
+		return []byte(`{"rebase":{"allowed_branches":["feature/*","["]}}`), nil
+	})
+	if err == nil {
+		t.Fatal("ReadRebaseConfig() error = nil")
+	}
+	assertContains(t, err.Error(), "rebase.allowed_branches[1]")
+}
+
+func TestReadRebaseConfigRejectsInvalidFieldTypes(t *testing.T) {
+	tests := []string{
+		`{"rebase":[]}`,
+		`{"rebase":{"allowed_branches":"feature/*"}}`,
+		`{"rebase":{"allowed_branches":[1]}}`,
+	}
+	for _, contents := range tests {
+		t.Run(contents, func(t *testing.T) {
+			if _, err := ReadRebaseConfig("grape.json", func(string) ([]byte, error) {
+				return []byte(contents), nil
+			}); err == nil {
+				t.Fatal("ReadRebaseConfig() error = nil")
+			}
+		})
+	}
+}
+
+func TestRebaseDoubleStarHasNoRecursiveMeaning(t *testing.T) {
+	config, err := ReadRebaseConfig("grape.json", func(string) ([]byte, error) {
+		return []byte(`{"rebase":{"allowed_branches":["feature/**"]}}`), nil
+	})
+	if err != nil {
+		t.Fatalf("ReadRebaseConfig() error = %v", err)
+	}
+	if !config.BranchAllowedForRebase("feature/test") {
+		t.Fatal("feature/** did not match feature/test")
+	}
+	if config.BranchAllowedForRebase("feature/team/test") {
+		t.Fatal("feature/** recursively matched feature/team/test")
+	}
+}
+
 func assertContains(t *testing.T, got string, want string) {
 	t.Helper()
 	if !strings.Contains(got, want) {
