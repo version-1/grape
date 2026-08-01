@@ -15,7 +15,7 @@ The latest release provides binaries for macOS arm64 and Linux amd64. Download a
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/main/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/cc226a777bfb89c85130e010ad6f1e914fd8727e/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"

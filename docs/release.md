@@ -120,7 +120,7 @@ install_test_dir="$(mktemp -d)"
 cd "$install_test_dir"
 
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/main/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/cc226a777bfb89c85130e010ad6f1e914fd8727e/scripts/install.sh \
   --output install.sh
 
 sh install.sh
