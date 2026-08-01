@@ -72,7 +72,7 @@ Build the macOS arm64 and Linux amd64 release assets with an unprefixed release 
 make release VERSION=0.1.2
 ```
 
-The release assets are written to `dist/grape_darwin_arm64` and `dist/grape_linux_amd64`. Upload these stable asset names to the matching GitHub release so the installer continues to work when the release version changes.
+The release assets are written to `dist/grape_darwin_arm64` and `dist/grape_linux_amd64`. Follow the [release guide](docs/release.md) to verify and publish these stable asset names without breaking the installer.
 
 ### Commands
 
