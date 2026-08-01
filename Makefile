@@ -13,7 +13,7 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) $(CMD)
 
 release:
-	VERSION="$(patsubst v%,%,$(VERSION))" COMMIT="$(COMMIT)" RELEASE_DIR="$(RELEASE_DIR)" sh scripts/release.sh
+	VERSION="$(VERSION)" COMMIT="$(COMMIT)" RELEASE_DIR="$(RELEASE_DIR)" sh scripts/release.sh
 
 clean:
 	rm -f $(BIN_DIR)/$(BINARY)

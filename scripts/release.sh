@@ -22,6 +22,13 @@ case "$version" in
     ;;
 esac
 
+for asset in grape_darwin_arm64 grape_linux_amd64; do
+  if [ -e "$release_dir/$asset" ] || [ -L "$release_dir/$asset" ]; then
+    echo "Refusing to overwrite $release_dir/$asset" >&2
+    exit 1
+  fi
+done
+
 staging_dir="$(mktemp -d)"
 trap 'rm -rf "$staging_dir"' EXIT HUP INT TERM
 

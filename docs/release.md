@@ -48,7 +48,7 @@ dist/grape_darwin_arm64
 dist/grape_linux_amd64
 ```
 
-The build stages both binaries in a temporary directory before replacing the files in `dist`, so a failed cross-build does not publish a newly built partial pair.
+The build stages both binaries in a temporary directory and refuses to overwrite either existing file in `dist`. This prevents a failed or repeated build from leaving an unnoticed mixture of release assets. Remove or archive a previous `dist` directory deliberately before rebuilding.
 
 Inspect the outputs and record checksums:
 

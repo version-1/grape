@@ -4,6 +4,13 @@ set -eu
 
 repository="version-1/grape"
 
+case "${GRAPE_VERSION:-}" in
+  v*)
+    echo "GRAPE_VERSION must not start with v: $GRAPE_VERSION" >&2
+    exit 1
+    ;;
+esac
+
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) asset="grape_darwin_arm64" ;;
   Linux-x86_64) asset="grape_linux_amd64" ;;
