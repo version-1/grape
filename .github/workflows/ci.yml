@@ -23,5 +23,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test installer
+        run: sh scripts/install_test.sh
+
       - name: Build
         run: make build
+
+      - name: Build release binaries
+        run: make release VERSION=0.0.0

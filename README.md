@@ -10,18 +10,18 @@ It provides agent-friendly `git worktree` workflows, including policy-gated reba
 
 ### Installation
 
-The `0.1.2` release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
+The latest release provides binaries for macOS arm64 and Linux amd64. Download and run the installer to fetch the matching binary into the current directory:
 
 ```sh
 install_script="$(mktemp)"
 curl --fail --location --silent --show-error \
-  https://raw.githubusercontent.com/version-1/grape/cdff260d5078c7f0db67e2ab59ddaa552d5798d7/scripts/install.sh \
+  https://raw.githubusercontent.com/version-1/grape/main/scripts/install.sh \
   --output "$install_script"
 sh "$install_script"
 rm "$install_script"
 ```
 
-The installer refuses to overwrite an existing `./grape`. Set `GRAPE_VERSION` before running it to select a different release.
+The installer resolves the latest published release at runtime and refuses to overwrite an existing `./grape`. Set `GRAPE_VERSION` to a release tag such as `0.1.2` to select a specific release.
 
 Install the downloaded binary on your `PATH` manually:
 
@@ -65,6 +65,14 @@ Build a local binary with:
 ```sh
 make build
 ```
+
+Build the macOS arm64 and Linux amd64 release assets with an unprefixed release version:
+
+```sh
+make release VERSION=0.1.2
+```
+
+The release assets are written to `dist/grape_darwin_arm64` and `dist/grape_linux_amd64`. Upload these stable asset names to the matching GitHub release so the installer continues to work when the release version changes.
 
 ### Commands
 
