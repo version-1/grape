@@ -11,16 +11,10 @@ if [ -z "$version" ]; then
   exit 1
 fi
 
-case "$version" in
-  v*)
-    echo "VERSION must not start with v: $version" >&2
-    exit 1
-    ;;
-  *[!0-9A-Za-z._-]*)
-    echo "VERSION contains unsupported characters: $version" >&2
-    exit 1
-    ;;
-esac
+if ! printf '%s\n' "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+  echo "VERSION must be an unprefixed MAJOR.MINOR.PATCH version: $version" >&2
+  exit 1
+fi
 
 for asset in grape_darwin_arm64 grape_linux_amd64; do
   if [ -e "$release_dir/$asset" ] || [ -L "$release_dir/$asset" ]; then

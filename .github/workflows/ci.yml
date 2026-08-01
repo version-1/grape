@@ -32,7 +32,9 @@ jobs:
       - name: Build release binaries
         run: |
           make release VERSION=0.0.0
-          if make release VERSION=v0.0.0 RELEASE_DIR=dist-prefixed; then
-            echo "v-prefixed release version was accepted" >&2
-            exit 1
-          fi
+          for invalid_version in v0.0.0 latest 0.1 01.2.3; do
+            if make release VERSION="$invalid_version" RELEASE_DIR="dist-$invalid_version"; then
+              echo "invalid release version was accepted: $invalid_version" >&2
+              exit 1
+            fi
+          done

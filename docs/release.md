@@ -4,7 +4,7 @@ This guide is the canonical procedure for building and publishing grape releases
 
 ## Release Contract
 
-- Release tags and titles use an unprefixed semantic version such as `0.1.2`, never `v0.1.2`.
+- Release tags and titles use an unprefixed `MAJOR.MINOR.PATCH` version such as `0.1.2`, never `v0.1.2`.
 - A release targets the exact latest commit on `origin/main`.
 - Every published release contains both stable asset names:
   - `grape_darwin_arm64`
@@ -20,9 +20,11 @@ Start from a clean working tree and update the remote references:
 git status --short --branch
 git fetch origin
 git rev-parse origin/main
+git rev-parse HEAD
+test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 ```
 
-Use the resulting full commit hash as the release target. Do not release an unmerged branch or a stale local `main`.
+The final command must succeed. Use that full commit hash as the release target. Do not build from an unmerged branch or stale local `main`: the current `HEAD`, embedded binary commit, release tag, and GitHub release target must all identify the same commit.
 
 Confirm that neither the tag nor the GitHub release already exists. For version `0.1.2`:
 
@@ -48,7 +50,7 @@ dist/grape_darwin_arm64
 dist/grape_linux_amd64
 ```
 
-The build stages both binaries in a temporary directory and refuses to overwrite either existing file in `dist`. This prevents a failed or repeated build from leaving an unnoticed mixture of release assets. Remove or archive a previous `dist` directory deliberately before rebuilding.
+The build stages both binaries in a temporary directory and refuses to start when either output already exists in `dist`. This protects previous outputs from routine failed or repeated builds. Remove or archive a previous `dist` directory deliberately before rebuilding, and verify both final checksums before upload.
 
 Inspect the outputs and record checksums:
 
