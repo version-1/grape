@@ -92,6 +92,8 @@ grape list --porcelain
 
 See the [command reference](.codex/skills/grape-usage/references/README.md) for all commands, options, and safety behavior.
 
+See the [configuration reference](docs/configuration.md) for the complete `grape.json` schema, discovery rules, validation behavior, defaults, and policy semantics.
+
 ### Reset Worktrees
 
 `grape reset` rebuilds the repository's non-default worktrees from a configuration file. It removes the existing non-default worktrees and local branches, then creates the worktrees declared in the configuration.
@@ -100,52 +102,7 @@ This provides a repeatable way to restore a known worktree layout for coding-age
 
 `grape reset` is destructive, but never removes the main working tree or the branch checked out there. Before deleting anything, it prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation.
 
-By default, `grape reset` resolves `grape.json` in this order:
-
-1. `./grape.json`
-2. `$GRAPE_HOME/grape.json`
-3. `~/.grape/grape.json` when `GRAPE_HOME` is not set
-
-The complete JSON document is decoded strictly for `list`, `branch`, `remove`, `reset`, `push`, and `rebase`. Unknown top-level fields, unknown nested fields, malformed JSON, unreadable selected files, and invalid values stop the command before Git is inspected. `help`, `version`, `init`, and commands delegated to `git worktree` do not validate config.
-
-`reset` requires a non-empty `worktrees` list. Other built-in commands may use a push-only config without `worktrees`.
-
-Unlike other configuration-aware commands, `rebase` requires an existing config file because no safe default allow policy exists.
-
-Example reset configuration:
-
-```json
-{
-  "default_branch": "main",
-  "worktrees": [
-    {
-      "path": ".worktrees/1",
-      "branch": "worktrees/1",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/2",
-      "branch": "worktrees/2",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/3",
-      "branch": "worktrees/3",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/4",
-      "branch": "worktrees/4",
-      "start_point": "origin/main"
-    },
-    {
-      "path": ".worktrees/5",
-      "branch": "worktrees/5",
-      "start_point": "origin/main"
-    }
-  ]
-}
-```
+`reset` requires a non-empty `worktrees` list. See the [configuration reference](docs/configuration.md) for reset fields, examples, discovery, and validation rules.
 
 ## Policy-Gated Rebase
 
@@ -159,7 +116,7 @@ grape rebase --config path/to/grape.json origin/main
 
 Without an upstream argument, grape executes `git rebase` and lets Git use the current branch's configured upstream. With one upstream, it executes `git rebase <upstream>`. The allow policy always applies to the complete short name of the current checked-out branch, never to the upstream argument.
 
-Configure allowed current branches with case-sensitive Go `path.Match` patterns:
+Configure allowed current branches in `grape.json`:
 
 ```json
 {
@@ -169,7 +126,7 @@ Configure allowed current branches with case-sensitive Go `path.Match` patterns:
 }
 ```
 
-A missing `rebase` object, missing `allowed_branches`, or empty list denies every branch. Every pattern is validated before Git is inspected, so a malformed pattern invalidates the config even when an earlier pattern would match. `*` and `?` do not cross `/`, and `**` has no recursive special meaning.
+A missing policy or empty list denies every branch. See [Allowed rebase branches](docs/configuration.md#allowed-rebase-branches) for validation and pattern semantics.
 
 Detached HEAD and denied branches exit 1 without running rebase. Missing or malformed config, invalid field types or glob patterns, unknown options, Git rebase flags, and multiple upstream arguments exit 2 without running rebase. Git's stdin, stdout, stderr, and exit code pass through unchanged. Conflicts are left in place; use `git rebase --continue`, `git rebase --abort`, or `git rebase --skip` directly.
 
@@ -186,7 +143,7 @@ The remote is always `origin`, and the destination is always the current symboli
 
 Immediately before execution, `grape` logs the branch, selected origin URL, and exact Git command to stderr. Git's stdout and stderr pass through unchanged, and `grape` returns the exit code from `git push`.
 
-Protected branches are configured with case-sensitive Go `path.Match` patterns:
+Protected branches are configured in `grape.json`:
 
 ```json
 {
@@ -196,13 +153,7 @@ Protected branches are configured with case-sensitive Go `path.Match` patterns:
 }
 ```
 
-The defaults are `main` and `master`. An explicitly configured list replaces the defaults; it does not extend them. Omitting `push` or `protected_branches` uses the defaults. An explicit empty list and invalid glob patterns are configuration errors. Because `path.Match` treats `/` as a separator, `release/*` matches `release/1.0` but not `release/series/1.0`.
-
-When no config file exists, configuration-aware commands continue with the defaults and write this warning to stderr:
-
-```text
-grape: warning: grape.json not found; using default protected branches: main, master
-```
+The defaults are `main` and `master`. See [Protected push branches](docs/configuration.md#protected-push-branches) for replacement, empty-list, discovery, and pattern semantics.
 
 ## Output and Color
 
