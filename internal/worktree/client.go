@@ -34,6 +34,7 @@ type Client interface {
 	ValidateBranch(context.Context, string) error
 	OriginURL(context.Context) (string, error)
 	Push(context.Context, string, bool, io.Writer, io.Writer) error
+	Rebase(context.Context, string, io.Reader, io.Writer, io.Writer) error
 }
 
 type RunGitFunc func(context.Context, []string, io.Reader, io.Writer, io.Writer) error
@@ -192,6 +193,14 @@ func (c CommandClient) Push(ctx context.Context, branch string, forceWithLease b
 	}
 	args = append(args, "origin", "HEAD:"+branch)
 	return c.run(ctx, args, nil, stdout, stderr)
+}
+
+func (c CommandClient) Rebase(ctx context.Context, upstream string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	args := []string{"rebase"}
+	if upstream != "" {
+		args = append(args, upstream)
+	}
+	return c.run(ctx, args, stdin, stdout, stderr)
 }
 
 func commandError(err error, stderr *bytes.Buffer) error {
