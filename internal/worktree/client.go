@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -31,16 +32,18 @@ type Client interface {
 	DefaultBranch(context.Context) (string, error)
 	AddWorktree(context.Context, ConfiguredItem, string, io.Writer, io.Writer) error
 	CurrentBranch(context.Context) (string, error)
+	RebaseBranch(context.Context) (string, error)
 	ValidateBranch(context.Context, string) error
 	OriginURL(context.Context) (string, error)
 	Push(context.Context, string, bool, io.Writer, io.Writer) error
-	Rebase(context.Context, string, io.Reader, io.Writer, io.Writer) error
+	Rebase(context.Context, []string, io.Reader, io.Writer, io.Writer) error
 }
 
 type RunGitFunc func(context.Context, []string, io.Reader, io.Writer, io.Writer) error
 
 type CommandClient struct {
 	RunCommand RunGitFunc
+	ReadFile   func(string) ([]byte, error)
 }
 
 func (c CommandClient) run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
@@ -128,6 +131,48 @@ func (c CommandClient) CurrentBranch(ctx context.Context) (string, error) {
 	return branch, nil
 }
 
+func (c CommandClient) RebaseBranch(ctx context.Context) (string, error) {
+	readFile := c.ReadFile
+	if readFile == nil {
+		readFile = os.ReadFile
+	}
+
+	for _, stateDirectory := range []string{"rebase-merge", "rebase-apply"} {
+		path, err := c.gitPath(ctx, stateDirectory+"/head-name")
+		if err != nil {
+			return "", err
+		}
+		contents, err := readFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+
+		const branchPrefix = "refs/heads/"
+		branch := strings.TrimSpace(string(contents))
+		if !strings.HasPrefix(branch, branchPrefix) || branch == branchPrefix {
+			return "", fmt.Errorf("rebase head-name is not a local branch: %q", branch)
+		}
+		return strings.TrimPrefix(branch, branchPrefix), nil
+	}
+	return "", errors.New("rebase is not in progress")
+}
+
+func (c CommandClient) gitPath(ctx context.Context, path string) (string, error) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if err := c.run(ctx, []string{"rev-parse", "--git-path", path}, nil, stdout, stderr); err != nil {
+		return "", commandError(err, stderr)
+	}
+	resolved := strings.TrimSpace(stdout.String())
+	if resolved == "" {
+		return "", errors.New("git path is empty")
+	}
+	return resolved, nil
+}
+
 func (c CommandClient) ValidateBranch(ctx context.Context, branch string) error {
 	if strings.HasPrefix(branch, "-") {
 		return fmt.Errorf("branch name must not begin with '-': %q", branch)
@@ -195,11 +240,8 @@ func (c CommandClient) Push(ctx context.Context, branch string, forceWithLease b
 	return c.run(ctx, args, nil, stdout, stderr)
 }
 
-func (c CommandClient) Rebase(ctx context.Context, upstream string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-	args := []string{"rebase"}
-	if upstream != "" {
-		args = append(args, upstream)
-	}
+func (c CommandClient) Rebase(ctx context.Context, rebaseArgs []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	args := append([]string{"rebase"}, rebaseArgs...)
 	return c.run(ctx, args, stdin, stdout, stderr)
 }
 

@@ -76,8 +76,7 @@ make build
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `grape push` | Push the current branch with `git push origin HEAD:<current-branch>`. |
 | `grape push --force-with-lease` | Push the current branch with Git's exact `--force-with-lease` option. |
-| `grape rebase` | Rebase the current branch onto its configured upstream when allowed by config. |
-| `grape rebase origin/main` | Rebase the current branch onto one explicit upstream when allowed by config. |
+| `grape rebase [<git-rebase-args>...]` | Run policy-gated `git rebase` with pass-through arguments. |
 | `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
 | `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `grape version` | Show the build version and commit hash. |
@@ -106,15 +105,19 @@ This provides a repeatable way to restore a known worktree layout for coding-age
 
 ## Policy-Gated Rebase
 
-Only these forms are accepted:
+Grape accepts Git rebase arguments while reserving `--config` and `-c` for its own config selection:
 
 ```sh
 grape rebase
 grape rebase origin/main
-grape rebase --config path/to/grape.json origin/main
+grape rebase -i --config path/to/grape.json origin/main
+grape rebase --onto main base feature
+grape rebase --continue
 ```
 
-Without an upstream argument, grape executes `git rebase` and lets Git use the current branch's configured upstream. With one upstream, it executes `git rebase <upstream>`. The allow policy always applies to the complete short name of the current checked-out branch, never to the upstream argument.
+Grape removes `--config <path>`, `--config=<path>`, and `-c <path>` before passing every other argument to `git rebase` in its original order. A `--` separator ends grape option handling and is not passed to Git, so arguments named `--config` or `-c` can still be sent to Git after the separator.
+
+The allow policy applies to the complete short name of the current checked-out branch, never to a positional argument. During an active rebase, when HEAD is detached, grape reads Git's rebase state and applies the policy to the original local branch.
 
 Configure allowed current branches in `grape.json`:
 
@@ -128,7 +131,7 @@ Configure allowed current branches in `grape.json`:
 
 A missing policy or empty list denies every branch. See [Allowed rebase branches](docs/configuration.md#allowed-rebase-branches) for validation and pattern semantics.
 
-Detached HEAD and denied branches exit 1 without running rebase. Missing or malformed config, invalid field types or glob patterns, unknown options, Git rebase flags, and multiple upstream arguments exit 2 without running rebase. Git's stdin, stdout, stderr, and exit code pass through unchanged. Conflicts are left in place; use `git rebase --continue`, `git rebase --abort`, or `git rebase --skip` directly.
+A detached HEAD outside an active rebase and denied branches exit 1 without running rebase. Missing or malformed config, invalid field types or glob patterns, and a grape config option without a path exit 2 without running rebase. Grape does not validate Git's arguments; unknown options and invalid combinations are reported by Git. Git's stdin, stdout, stderr, and exit code pass through unchanged. Conflicts are left in place and can be handled with `grape rebase --continue`, `grape rebase --abort`, or `grape rebase --skip`.
 
 ## Safe Push
 

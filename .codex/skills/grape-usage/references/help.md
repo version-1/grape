@@ -13,5 +13,5 @@ Help itself does not read or validate `grape.json`.
 The command list includes:
 
 ```text
-grape rebase [--config|-c <path>] [<upstream>]
+grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]
 ```
