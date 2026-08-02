@@ -20,7 +20,7 @@ Build `grape` with `make build`. The executable entry point is `./cmd/grape`.
 - [`grape remove`](remove.md): remove matching worktrees and their local branches.
 - [`grape reset`](reset.md): recreate configured worktrees after removing non-default worktrees and local branches.
 - [`grape push`](push.md): safely push the current symbolic branch to `origin`.
-- [`grape rebase`](rebase.md): rebase the current symbolic branch when allowed by config.
+- [`grape rebase`](rebase.md): run policy-gated Git rebase operations for the current or active-rebase branch.
 - [`grape init`](init.md): create an initial configuration file.
 - [`grape version`](version.md): display build version information.
 - [`git worktree` commands](git-worktree.md): delegated commands not implemented by `grape`.
