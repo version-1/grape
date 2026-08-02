@@ -4,8 +4,11 @@ Reads a configuration file, removes non-default worktrees and local branches, an
 
 ```sh
 grape reset
+grape reset --yes
+grape reset -y
 grape reset --config grape.json
 grape reset -c grape.json
+grape reset -y -c grape.json
 ```
 
 The default config file is `grape.json`. When `--config` is omitted, paths are resolved in this order:
@@ -16,7 +19,9 @@ The default config file is `grape.json`. When `--config` is omitted, paths are r
 
 The selected file is decoded strictly before Git inspection. Unknown fields, malformed JSON, invalid values, and unreadable files are errors. Reset additionally requires a non-empty, valid `worktrees` list; a push-only config is valid globally but not sufficient for reset.
 
-`reset` is destructive. It deletes all non-default worktrees and local branches, but never the main working tree or the branch checked out there. Before deleting anything, it lists the targets and continues only after `y` or `yes` confirmation. Verify the target repository and configuration file before running it.
+`reset` is destructive. It deletes all non-default worktrees and local branches, but never the main working tree or the branch checked out there. Before deleting anything, it lists the targets and continues only after `y` or `yes` confirmation. Use `--yes` or `-y` to skip the prompt; the deletion preview is still printed. Verify the target repository and configuration file before running it.
+
+Reset removes each target worktree with `git worktree remove --force` whether or not `--yes` is used, and deletes target branches with `git branch -D`. After a successful reset, it prints all remaining local branches instead of per-operation progress. Failure during deletion or creation stops the reset without printing a final branch list. Failure to retrieve the final branch list also makes the command fail; completed Git changes are not rolled back.
 
 ## Reset Configuration
 

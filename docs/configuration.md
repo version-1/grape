@@ -59,7 +59,7 @@ Each `worktrees[].branch` must be non-empty and unique after an optional `refs/h
 git worktree add -B <branch> <path> <start_point>
 ```
 
-Before creation, `reset` previews and asks to delete non-default worktrees and local branches. It never removes the main working tree or the branch checked out there.
+Before creation, `reset` previews and asks to delete non-default worktrees and local branches. Pass `--yes` or `-y` to skip the prompt while retaining the preview. Reset always removes target worktrees with `git worktree remove --force`. It never removes the main working tree or the branch checked out there. After successful creation, reset prints all remaining local branches.
 
 ### Protected push branches
 
