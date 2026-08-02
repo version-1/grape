@@ -66,14 +66,6 @@ Build a local binary with:
 make build
 ```
 
-Build the macOS arm64 and Linux amd64 release assets with an unprefixed release version:
-
-```sh
-make release VERSION=0.1.2
-```
-
-The release assets are written to `dist/grape_darwin_arm64` and `dist/grape_linux_amd64`. Follow the [release guide](docs/release.md) to verify and publish these stable asset names without breaking the installer.
-
 ### Commands
 
 | Command | Description |
