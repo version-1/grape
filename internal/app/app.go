@@ -416,7 +416,7 @@ func parseRebaseOptions(args []string) (rebaseOptions, error) {
 		}
 		if arg == "--config" || arg == "-c" {
 			index++
-			if index >= len(args) {
+			if index >= len(args) || args[index] == "" {
 				return rebaseOptions{}, fmt.Errorf("%s requires a path", arg)
 			}
 			options.ConfigPath = args[index]
@@ -424,6 +424,9 @@ func parseRebaseOptions(args []string) (rebaseOptions, error) {
 		}
 		if strings.HasPrefix(arg, "--config=") {
 			options.ConfigPath = strings.TrimPrefix(arg, "--config=")
+			if options.ConfigPath == "" {
+				return rebaseOptions{}, errors.New("--config requires a path")
+			}
 			continue
 		}
 		options.GitArgs = append(options.GitArgs, arg)

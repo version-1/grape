@@ -717,14 +717,24 @@ func TestRunRebasePassesGitArgumentsAndPreservesStreams(t *testing.T) {
 }
 
 func TestRunRebaseRejectsMissingGrapeConfigPathBeforeGit(t *testing.T) {
-	client := &fakeClient{currentBranch: "feature/test"}
-	code := withConfig(New(client, &fakeRunner{}, nil), `{"rebase":{"allowed_branches":["feature/*"]}}`).
-		Run(context.Background(), []string{"rebase", "--config"}, nil, io.Discard, io.Discard)
-	if code != 2 {
-		t.Fatalf("code = %d, want 2", code)
+	tests := [][]string{
+		{"rebase", "--config"},
+		{"rebase", "--config="},
+		{"rebase", "--config", ""},
+		{"rebase", "-c", ""},
 	}
-	if len(client.gitCalls) != 0 {
-		t.Fatalf("git calls = %#v, want none", client.gitCalls)
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			client := &fakeClient{currentBranch: "feature/test"}
+			code := withConfig(New(client, &fakeRunner{}, nil), `{"rebase":{"allowed_branches":["feature/*"]}}`).
+				Run(context.Background(), args, nil, io.Discard, io.Discard)
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if len(client.gitCalls) != 0 {
+				t.Fatalf("git calls = %#v, want none", client.gitCalls)
+			}
+		})
 	}
 }
 
