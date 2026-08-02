@@ -99,6 +99,32 @@ func TestCommandClientPushUsesExactArguments(t *testing.T) {
 	}
 }
 
+func TestCommandClientRemoveWorktreeUsesExactArguments(t *testing.T) {
+	tests := []struct {
+		name  string
+		force bool
+		want  []string
+	}{
+		{"normal", false, []string{"worktree", "remove", "/repo-feature"}},
+		{"force", true, []string{"worktree", "remove", "--force", "/repo-feature"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var got []string
+			client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, _ io.Writer, _ io.Writer) error {
+				got = append([]string(nil), args...)
+				return nil
+			}}
+			if err := client.RemoveWorktree(context.Background(), "/repo-feature", test.force, io.Discard, io.Discard); err != nil {
+				t.Fatalf("RemoveWorktree() error = %v", err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("args = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestCommandClientOriginURLSelection(t *testing.T) {
 	tests := []struct {
 		name      string

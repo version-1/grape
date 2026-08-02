@@ -46,12 +46,15 @@ func (e fakeExitError) ExitCode() int {
 type fakeClient struct {
 	worktrees       []worktree.Worktree
 	branches        []string
+	branchListErr   error
+	branchLists     int
 	defaultBranch   string
 	listErr         error
 	removeErr       error
 	deleteErr       error
 	addErr          error
 	removed         []string
+	removedForce    []bool
 	deleted         []string
 	added           []worktree.ConfiguredItem
 	addedDefaults   []string
@@ -120,17 +123,23 @@ func (c *fakeClient) ListWorktrees(context.Context) ([]worktree.Worktree, error)
 	return c.worktrees, c.listErr
 }
 
-func (c *fakeClient) RemoveWorktree(_ context.Context, path string, _ io.Writer, _ io.Writer) error {
+func (c *fakeClient) RemoveWorktree(_ context.Context, path string, force bool, _ io.Writer, _ io.Writer) error {
 	c.removed = append(c.removed, path)
+	c.removedForce = append(c.removedForce, force)
 	return c.removeErr
 }
 
 func (c *fakeClient) DeleteBranch(_ context.Context, branch string, _ io.Writer, _ io.Writer) error {
 	c.deleted = append(c.deleted, branch)
+	c.branches = slices.DeleteFunc(c.branches, func(candidate string) bool { return candidate == branch })
 	return c.deleteErr
 }
 
 func (c *fakeClient) ListBranches(context.Context) ([]string, error) {
+	c.branchLists++
+	if c.branchLists > 1 && c.branchListErr != nil {
+		return nil, c.branchListErr
+	}
 	return c.branches, c.listErr
 }
 
@@ -141,6 +150,10 @@ func (c *fakeClient) DefaultBranch(context.Context) (string, error) {
 func (c *fakeClient) AddWorktree(_ context.Context, item worktree.ConfiguredItem, defaultBranch string, _ io.Writer, _ io.Writer) error {
 	c.added = append(c.added, item)
 	c.addedDefaults = append(c.addedDefaults, defaultBranch)
+	if !slices.Contains(c.branches, item.Branch) {
+		c.branches = append(c.branches, item.Branch)
+		slices.Sort(c.branches)
+	}
 	return c.addErr
 }
 
@@ -206,7 +219,7 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 	}
 	assertContains(t, stdout.String(), "Usage:")
 	assertContains(t, stdout.String(), "grape init")
-	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
+	assertContains(t, stdout.String(), "grape reset [--yes|-y] [--config|-c <path>]")
 	assertContains(t, stdout.String(), "grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]")
 	assertContains(t, stdout.String(), "$GRAPE_HOME/grape.json")
 	assertContains(t, stdout.String(), "except rebase, which requires an existing config file")
@@ -407,6 +420,9 @@ func TestRunRemoveRegexDeletesMatchingWorktrees(t *testing.T) {
 	if !slices.Equal(client.deleted, []string{"feature/one"}) {
 		t.Fatalf("deleted = %#v", client.deleted)
 	}
+	if !slices.Equal(client.removedForce, []bool{false, false}) {
+		t.Fatalf("removed force = %#v, want remove to remain non-forced", client.removedForce)
+	}
 }
 
 func TestRunRemoveSkipsMainWorktree(t *testing.T) {
@@ -501,8 +517,17 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 	assertContains(t, stdout.String(), "grape reset will delete:")
 	assertContains(t, stdout.String(), "/repo-feature")
 	assertContains(t, stdout.String(), "feature/orphan")
+	assertContains(t, stdout.String(), "Branches\n  feature/current\n  feature/one\n  feature/two\n  main\n")
+	for _, unwanted := range []string{"Removing worktree", "Deleting branch", "Adding worktree"} {
+		if strings.Contains(stdout.String(), unwanted) {
+			t.Fatalf("stdout contains progress log %q: %q", unwanted, stdout)
+		}
+	}
 	if !slices.Equal(client.removed, []string{"/repo-feature", "/repo-detached"}) {
 		t.Fatalf("removed = %#v, want %#v", client.removed, []string{"/repo-feature", "/repo-detached"})
+	}
+	if !slices.Equal(client.removedForce, []bool{true, true}) {
+		t.Fatalf("removed force = %#v, want %#v", client.removedForce, []bool{true, true})
 	}
 	if !slices.Equal(client.deleted, []string{"feature/old", "feature/orphan"}) {
 		t.Fatalf("deleted = %#v, want %#v", client.deleted, []string{"feature/old", "feature/orphan"})
@@ -516,6 +541,81 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 	}
 	if !slices.Equal(client.addedDefaults, []string{"main", "main"}) {
 		t.Fatalf("addedDefaults = %#v, want %#v", client.addedDefaults, []string{"main", "main"})
+	}
+}
+
+func TestRunResetYesSkipsConfirmation(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-feature","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{
+			{Path: "/repo", Branch: "main", Main: true},
+			{Path: "/repo-old", Branch: "feature/old"},
+		},
+		branches: []string{"feature/old", "main"},
+	}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+
+	for _, yesFlag := range []string{"-y", "--yes"} {
+		t.Run(yesFlag, func(t *testing.T) {
+			client.removed = nil
+			client.removedForce = nil
+			client.deleted = nil
+			client.added = nil
+			client.branches = []string{"feature/old", "main"}
+			client.branchLists = 0
+			stdout := &bytes.Buffer{}
+
+			code := app.Run(context.Background(), []string{"reset", "--config", "grape.json", yesFlag}, nil, stdout, io.Discard)
+
+			if code != 0 {
+				t.Fatalf("code = %d, want 0", code)
+			}
+			if strings.Contains(stdout.String(), "Proceed with reset?") {
+				t.Fatalf("stdout contains confirmation prompt: %q", stdout)
+			}
+			assertContains(t, stdout.String(), "grape reset will delete:")
+			assertContains(t, stdout.String(), "Branches\n  feature/new\n  main\n")
+		})
+	}
+}
+
+func TestRunResetRejectsForceFlags(t *testing.T) {
+	for _, forceFlag := range []string{"-f", "--force"} {
+		t.Run(forceFlag, func(t *testing.T) {
+			stderr := &bytes.Buffer{}
+			client := &fakeClient{}
+
+			code := New(client, &fakeRunner{}, nil).Run(context.Background(), []string{"reset", forceFlag}, nil, io.Discard, stderr)
+
+			if code != 2 {
+				t.Fatalf("code = %d, want 2", code)
+			}
+			if client.branchLists != 0 || len(client.removed) != 0 {
+				t.Fatalf("client was called: %#v", client)
+			}
+		})
+	}
+}
+
+func TestRunResetFailsWhenFinalBranchListFails(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-feature","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees:     []worktree.Worktree{{Path: "/repo", Branch: "main", Main: true}},
+		branches:      []string{"main"},
+		branchListErr: errors.New("final list failed"),
+	}
+	stderr := &bytes.Buffer{}
+	stdout := &bytes.Buffer{}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+
+	code := app.Run(context.Background(), []string{"reset", "-y", "-c", "grape.json"}, nil, stdout, stderr)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertContains(t, stderr.String(), "list branches: final list failed")
+	if strings.Contains(stdout.String(), "Branches\n  main") {
+		t.Fatalf("stdout contains final branch list: %q", stdout)
 	}
 }
 

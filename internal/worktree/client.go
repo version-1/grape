@@ -26,7 +26,7 @@ type ConfiguredItem struct {
 
 type Client interface {
 	ListWorktrees(context.Context) ([]Worktree, error)
-	RemoveWorktree(context.Context, string, io.Writer, io.Writer) error
+	RemoveWorktree(context.Context, string, bool, io.Writer, io.Writer) error
 	DeleteBranch(context.Context, string, io.Writer, io.Writer) error
 	ListBranches(context.Context) ([]string, error)
 	DefaultBranch(context.Context) (string, error)
@@ -70,8 +70,13 @@ func (c CommandClient) ListWorktrees(ctx context.Context) ([]Worktree, error) {
 	return Parse(stdout.String()), nil
 }
 
-func (c CommandClient) RemoveWorktree(ctx context.Context, path string, stdout io.Writer, stderr io.Writer) error {
-	return c.run(ctx, []string{"worktree", "remove", path}, nil, stdout, stderr)
+func (c CommandClient) RemoveWorktree(ctx context.Context, path string, force bool, stdout io.Writer, stderr io.Writer) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, path)
+	return c.run(ctx, args, nil, stdout, stderr)
 }
 
 func (c CommandClient) DeleteBranch(ctx context.Context, branch string, stdout io.Writer, stderr io.Writer) error {
