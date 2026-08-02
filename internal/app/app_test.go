@@ -44,29 +44,31 @@ func (e fakeExitError) ExitCode() int {
 }
 
 type fakeClient struct {
-	worktrees     []worktree.Worktree
-	branches      []string
-	defaultBranch string
-	listErr       error
-	removeErr     error
-	deleteErr     error
-	addErr        error
-	removed       []string
-	deleted       []string
-	added         []worktree.ConfiguredItem
-	addedDefaults []string
-	currentBranch string
-	originURL     string
-	validateErr   error
-	pushErr       error
-	pushedBranch  string
-	pushedForce   bool
-	rebaseErr     error
-	rebasedOnto   string
-	rebaseStdin   io.Reader
-	rebaseStdout  io.Writer
-	rebaseStderr  io.Writer
-	gitCalls      []string
+	worktrees       []worktree.Worktree
+	branches        []string
+	defaultBranch   string
+	listErr         error
+	removeErr       error
+	deleteErr       error
+	addErr          error
+	removed         []string
+	deleted         []string
+	added           []worktree.ConfiguredItem
+	addedDefaults   []string
+	currentBranch   string
+	rebaseBranch    string
+	rebaseBranchErr error
+	originURL       string
+	validateErr     error
+	pushErr         error
+	pushedBranch    string
+	pushedForce     bool
+	rebaseErr       error
+	rebaseArgs      []string
+	rebaseStdin     io.Reader
+	rebaseStdout    io.Writer
+	rebaseStderr    io.Writer
+	gitCalls        []string
 }
 
 func (c *fakeClient) CurrentBranch(context.Context) (string, error) {
@@ -75,6 +77,14 @@ func (c *fakeClient) CurrentBranch(context.Context) (string, error) {
 		return "", c.listErr
 	}
 	return c.currentBranch, nil
+}
+
+func (c *fakeClient) RebaseBranch(context.Context) (string, error) {
+	c.gitCalls = append(c.gitCalls, "rebase-branch")
+	if c.rebaseBranchErr != nil {
+		return "", c.rebaseBranchErr
+	}
+	return c.rebaseBranch, nil
 }
 
 func (c *fakeClient) ValidateBranch(_ context.Context, branch string) error {
@@ -97,9 +107,9 @@ func (c *fakeClient) Push(_ context.Context, branch string, force bool, _ io.Wri
 	return c.pushErr
 }
 
-func (c *fakeClient) Rebase(_ context.Context, upstream string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+func (c *fakeClient) Rebase(_ context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	c.gitCalls = append(c.gitCalls, "rebase")
-	c.rebasedOnto = upstream
+	c.rebaseArgs = append([]string(nil), args...)
 	c.rebaseStdin = stdin
 	c.rebaseStdout = stdout
 	c.rebaseStderr = stderr
@@ -197,7 +207,7 @@ func TestRunHelpShowsInternalHelp(t *testing.T) {
 	assertContains(t, stdout.String(), "Usage:")
 	assertContains(t, stdout.String(), "grape init")
 	assertContains(t, stdout.String(), "grape reset [--config|-c <path>]")
-	assertContains(t, stdout.String(), "grape rebase [--config|-c <path>] [<upstream>]")
+	assertContains(t, stdout.String(), "grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]")
 	assertContains(t, stdout.String(), "$GRAPE_HOME/grape.json")
 	assertContains(t, stdout.String(), "except rebase, which requires an existing config file")
 	if runner.args != nil {
@@ -669,14 +679,16 @@ func TestRunPushAcceptsOnlyDocumentedForms(t *testing.T) {
 	}
 }
 
-func TestRunRebaseAcceptsOptionalUpstreamAndPreservesStreams(t *testing.T) {
+func TestRunRebasePassesGitArgumentsAndPreservesStreams(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     []string
-		upstream string
+		name    string
+		args    []string
+		gitArgs []string
 	}{
-		{"configured upstream", []string{"rebase", "origin/main"}, "origin/main"},
-		{"tracking upstream", []string{"rebase"}, ""},
+		{"tracking upstream", []string{"rebase"}, nil},
+		{"interactive upstream", []string{"rebase", "-i", "origin/main"}, []string{"-i", "origin/main"}},
+		{"onto with multiple revisions", []string{"rebase", "--onto", "main", "base", "feature"}, []string{"--onto", "main", "base", "feature"}},
+		{"continue", []string{"rebase", "--continue"}, []string{"--continue"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -691,8 +703,8 @@ func TestRunRebaseAcceptsOptionalUpstreamAndPreservesStreams(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("code = %d, stderr = %q", code, stderr)
 			}
-			if client.rebasedOnto != test.upstream {
-				t.Fatalf("upstream = %q, want %q", client.rebasedOnto, test.upstream)
+			if !slices.Equal(client.rebaseArgs, test.gitArgs) {
+				t.Fatalf("git args = %#v, want %#v", client.rebaseArgs, test.gitArgs)
 			}
 			if client.rebaseStdin != stdin || client.rebaseStdout != stdout || client.rebaseStderr != stderr {
 				t.Fatal("rebase streams were not preserved")
@@ -704,16 +716,12 @@ func TestRunRebaseAcceptsOptionalUpstreamAndPreservesStreams(t *testing.T) {
 	}
 }
 
-func TestRunRebaseRejectsInvalidArgumentsBeforeGit(t *testing.T) {
+func TestRunRebaseRejectsMissingGrapeConfigPathBeforeGit(t *testing.T) {
 	tests := [][]string{
-		{"rebase", "--continue"},
-		{"rebase", "--abort"},
-		{"rebase", "--skip"},
-		{"rebase", "-i", "main"},
-		{"rebase", "--unknown"},
-		{"rebase", "--", "--continue"},
-		{"rebase", "--", "-i"},
-		{"rebase", "main", "develop"},
+		{"rebase", "--config"},
+		{"rebase", "--config="},
+		{"rebase", "--config", ""},
+		{"rebase", "-c", ""},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -743,7 +751,7 @@ func TestRunRebaseRejectsPolicyAndDetachedHEADBeforeRebase(t *testing.T) {
 		{"missing allowed branches", `{"rebase":{}}`, &fakeClient{currentBranch: "feature/test"}, 1, "feature/test", []string{"current-branch"}},
 		{"empty policy", `{"rebase":{"allowed_branches":[]}}`, &fakeClient{currentBranch: "feature/test"}, 1, "feature/test", []string{"current-branch"}},
 		{"denied branch", `{"rebase":{"allowed_branches":["feature/*"]}}`, &fakeClient{currentBranch: "fix/test"}, 1, "fix/test", []string{"current-branch"}},
-		{"detached head", `{"rebase":{"allowed_branches":["feature/*"]}}`, &fakeClient{listErr: errors.New("detached")}, 1, "detached", []string{"current-branch"}},
+		{"detached head", `{"rebase":{"allowed_branches":["feature/*"]}}`, &fakeClient{listErr: errors.New("detached"), rebaseBranchErr: errors.New("no rebase")}, 1, "detached", []string{"current-branch", "rebase-branch"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -758,6 +766,44 @@ func TestRunRebaseRejectsPolicyAndDetachedHEADBeforeRebase(t *testing.T) {
 				t.Fatalf("git calls = %#v, want %#v", test.client.gitCalls, test.wantCalls)
 			}
 		})
+	}
+}
+
+func TestRunRebaseUsesOriginalBranchDuringActiveRebase(t *testing.T) {
+	client := &fakeClient{listErr: errors.New("detached"), rebaseBranch: "feature/test"}
+	code := withConfig(New(client, &fakeRunner{}, nil), `{"rebase":{"allowed_branches":["feature/*"]}}`).
+		Run(context.Background(), []string{"rebase", "--continue"}, nil, io.Discard, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !slices.Equal(client.gitCalls, []string{"current-branch", "rebase-branch", "rebase"}) {
+		t.Fatalf("git calls = %#v", client.gitCalls)
+	}
+	if !slices.Equal(client.rebaseArgs, []string{"--continue"}) {
+		t.Fatalf("git args = %#v", client.rebaseArgs)
+	}
+}
+
+func TestRunRebaseExtractsGrapeConfigUntilSeparator(t *testing.T) {
+	client := &fakeClient{currentBranch: "worktrees/3"}
+	application := New(client, &fakeRunner{}, func(path string) ([]byte, error) {
+		if path != "/tmp/rebase.json" {
+			t.Fatalf("path = %q, want explicit config", path)
+		}
+		return []byte(`{"rebase":{"allowed_branches":["worktrees/*"]}}`), nil
+	})
+
+	code := application.Run(context.Background(), []string{
+		"rebase", "-i", "--config=/tmp/first.json", "-c", "/tmp/rebase.json", "origin/main", "--", "--config", "git-value",
+	}, nil, io.Discard, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	want := []string{"-i", "origin/main", "--config", "git-value"}
+	if !slices.Equal(client.rebaseArgs, want) {
+		t.Fatalf("git args = %#v, want %#v", client.rebaseArgs, want)
 	}
 }
 
@@ -818,8 +864,8 @@ func TestRunRebaseUsesExplicitConfigAndPreservesGitExitCode(t *testing.T) {
 	if code != 23 {
 		t.Fatalf("code = %d, want 23", code)
 	}
-	if client.rebasedOnto != "origin/main" {
-		t.Fatalf("upstream = %q, want origin/main", client.rebasedOnto)
+	if !slices.Equal(client.rebaseArgs, []string{"origin/main"}) {
+		t.Fatalf("git args = %#v, want origin/main", client.rebaseArgs)
 	}
 }
 

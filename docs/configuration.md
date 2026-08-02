@@ -75,7 +75,7 @@ The policy is checked against the complete short name of the current symbolic br
 
 All patterns are validated before grape inspects the current branch. An empty string is a syntactically valid pattern but cannot match a non-empty branch name, so it grants no permission.
 
-The policy is checked against the complete short name of the current symbolic branch, not the optional rebase upstream. It applies to both `grape rebase` and `grape rebase <upstream>`.
+The policy is checked against the complete short name of the current symbolic branch, not the Git rebase arguments. During an active rebase, when HEAD is detached, grape checks the original local branch recorded in Git's rebase state. A detached HEAD outside an active rebase is denied.
 
 ## Branch Pattern Semantics
 

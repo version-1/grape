@@ -170,7 +170,7 @@ Usage:
   grape remove [--regex|-r] <path-prefix-or-pattern>
   grape reset [--config|-c <path>]
   grape push [--force-with-lease]
-  grape rebase [--config|-c <path>] [<upstream>]
+  grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]
   grape init
   grape version
   grape help
@@ -198,7 +198,7 @@ Safety:
   push accepts no arguments or exactly --force-with-lease, always targets origin,
   and refuses protected branches.
   rebase validates its complete allow policy before running git rebase.
-  Rebase continuation, abort, skip, and interactive modes require git directly.
+  Except for grape's config option, rebase arguments pass through to git rebase.
   reset and remove never remove the main working tree.
   reset also keeps the branch checked out by the main working tree.
   reset shows deletion targets and continues only after y/yes confirmation.
@@ -403,28 +403,33 @@ func parsePushOptions(args []string) (bool, error) {
 
 type rebaseOptions struct {
 	ConfigPath string
-	Upstream   string
+	GitArgs    []string
 }
 
 func parseRebaseOptions(args []string) (rebaseOptions, error) {
-	flags := flag.NewFlagSet("rebase", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	configPath := flags.String("config", "", "path to grape rebase config")
-	flags.StringVar(configPath, "c", "", "path to grape rebase config")
-
-	if err := flags.Parse(args); err != nil {
-		return rebaseOptions{}, err
-	}
-	if flags.NArg() > 1 {
-		return rebaseOptions{}, errors.New("usage: grape rebase [--config|-c <path>] [<upstream>]")
-	}
-
-	options := rebaseOptions{ConfigPath: *configPath}
-	if flags.NArg() == 1 {
-		options.Upstream = flags.Arg(0)
-		if strings.HasPrefix(options.Upstream, "-") {
-			return rebaseOptions{}, errors.New("upstream must not begin with '-'")
+	options := rebaseOptions{}
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			options.GitArgs = append(options.GitArgs, args[index+1:]...)
+			return options, nil
 		}
+		if arg == "--config" || arg == "-c" {
+			index++
+			if index >= len(args) || args[index] == "" {
+				return rebaseOptions{}, fmt.Errorf("%s requires a path", arg)
+			}
+			options.ConfigPath = args[index]
+			continue
+		}
+		if strings.HasPrefix(arg, "--config=") {
+			options.ConfigPath = strings.TrimPrefix(arg, "--config=")
+			if options.ConfigPath == "" {
+				return rebaseOptions{}, errors.New("--config requires a path")
+			}
+			continue
+		}
+		options.GitArgs = append(options.GitArgs, arg)
 	}
 	return options, nil
 }
@@ -432,7 +437,7 @@ func parseRebaseOptions(args []string) (rebaseOptions, error) {
 func (a App) runRebase(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, logger logging.Logger) int {
 	options, err := parseRebaseOptions(args)
 	if err != nil {
-		logger.Error("usage: grape rebase [--config|-c <path>] [<upstream>]")
+		logger.Error("usage: grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]")
 		return 2
 	}
 
@@ -453,15 +458,18 @@ func (a App) runRebase(ctx context.Context, args []string, stdin io.Reader, stdo
 
 	branch, err := a.client.CurrentBranch(ctx)
 	if err != nil {
-		logger.Error("current HEAD is detached or not in a git repository")
-		return 1
+		branch, err = a.client.RebaseBranch(ctx)
+		if err != nil {
+			logger.Error("current HEAD is detached outside an active rebase or not in a git repository")
+			return 1
+		}
 	}
 	if !cfg.BranchAllowedForRebase(branch) {
 		logger.Error("rebase is not allowed for current branch: %s", branch)
 		return 1
 	}
 
-	if err := a.client.Rebase(ctx, options.Upstream, stdin, stdout, stderr); err != nil {
+	if err := a.client.Rebase(ctx, options.GitArgs, stdin, stdout, stderr); err != nil {
 		if exitErr, ok := err.(exitCodeError); ok {
 			return exitErr.ExitCode()
 		}

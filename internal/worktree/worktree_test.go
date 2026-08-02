@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -246,11 +247,11 @@ func TestCommandClientPreservesPushStreamsAndError(t *testing.T) {
 func TestCommandClientRebaseUsesExactArgumentsAndPreservesStreams(t *testing.T) {
 	tests := []struct {
 		name     string
-		upstream string
+		args     []string
 		wantArgs []string
 	}{
-		{"tracking upstream", "", []string{"rebase"}},
-		{"explicit upstream", "origin/main", []string{"rebase", "origin/main"}},
+		{"tracking upstream", nil, []string{"rebase"}},
+		{"all arguments", []string{"--onto", "main", "base", "feature"}, []string{"rebase", "--onto", "main", "base", "feature"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -269,7 +270,7 @@ func TestCommandClientRebaseUsesExactArgumentsAndPreservesStreams(t *testing.T) 
 				return wantErr
 			}}
 
-			err := client.Rebase(context.Background(), test.upstream, stdin, stdout, stderr)
+			err := client.Rebase(context.Background(), test.args, stdin, stdout, stderr)
 
 			if !errors.Is(err, wantErr) {
 				t.Fatalf("Rebase() error = %v, want %v", err, wantErr)
@@ -279,6 +280,41 @@ func TestCommandClientRebaseUsesExactArgumentsAndPreservesStreams(t *testing.T) 
 			}
 			if stdout.String() != "raw stdout" || stderr.String() != "raw stderr" {
 				t.Fatalf("stdout = %q, stderr = %q", stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestCommandClientRebaseBranchReadsActiveRebaseState(t *testing.T) {
+	tests := []struct {
+		name      string
+		available string
+		want      string
+	}{
+		{"merge backend", "rebase-merge/head-name", "feature/merge"},
+		{"apply backend", "rebase-apply/head-name", "feature/apply"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := CommandClient{
+				RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+					_, _ = io.WriteString(stdout, args[2])
+					return nil
+				},
+				ReadFile: func(path string) ([]byte, error) {
+					if path != test.available {
+						return nil, os.ErrNotExist
+					}
+					return []byte("refs/heads/" + test.want + "\n"), nil
+				},
+			}
+
+			got, err := client.RebaseBranch(context.Background())
+			if err != nil {
+				t.Fatalf("RebaseBranch() error = %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("branch = %q, want %q", got, test.want)
 			}
 		})
 	}
