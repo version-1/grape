@@ -23,5 +23,18 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test installer
+        run: sh scripts/install_test.sh
+
       - name: Build
         run: make build
+
+      - name: Build release binaries
+        run: |
+          make release VERSION=0.0.0
+          for invalid_version in v0.0.0 latest 0.1 01.2.3; do
+            if make release VERSION="$invalid_version" RELEASE_DIR="dist-$invalid_version"; then
+              echo "invalid release version was accepted: $invalid_version" >&2
+              exit 1
+            fi
+          done
