@@ -1,6 +1,6 @@
 # `grape init`
 
-Creates `~/.grape/grape.json` from `grape.example.json` in the current directory.
+Creates `~/.grape/grape.json` from the example configuration bundled in the binary. It can be run from any directory.
 
 ```sh
 grape init

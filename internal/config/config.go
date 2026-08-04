@@ -320,15 +320,11 @@ func ReadResetConfig(path string, readFile ReadFileFunc) (Config, error) {
 
 // Initialize writes the example configuration to destination without replacing
 // an existing configuration file.
-func Initialize(examplePath string, destination string) error {
-	data, err := os.ReadFile(examplePath)
-	if err != nil {
-		return fmt.Errorf("read example config: %w", err)
-	}
+func Initialize(exampleConfig []byte, destination string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
-	return initializeConfigFile(destination, data, (*os.File).Write)
+	return initializeConfigFile(destination, exampleConfig, (*os.File).Write)
 }
 
 func initializeConfigFile(destination string, data []byte, write func(*os.File, []byte) (int, error)) error {

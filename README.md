@@ -46,13 +46,13 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### Initialize Config
 
-From a directory containing `grape.example.json`, run:
+Run from any directory:
 
 ```sh
 grape init
 ```
 
-This creates `~/.grape/grape.json`. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
+This creates `~/.grape/grape.json` from the example bundled in the binary. When `GRAPE_HOME` is set, it creates `$GRAPE_HOME/grape.json` instead. The command never overwrites an existing config file.
 
 ## Usage
 
@@ -77,7 +77,7 @@ make build
 | `grape push` | Push the current branch with `git push origin HEAD:<current-branch>`. |
 | `grape push --force-with-lease` | Push the current branch with Git's exact `--force-with-lease` option. |
 | `grape rebase [<git-rebase-args>...]` | Run policy-gated `git rebase` with pass-through arguments. |
-| `grape init` | Create `~/.grape/grape.json` from `grape.example.json`. |
+| `grape init` | Create `~/.grape/grape.json` from the bundled example. |
 | `grape reset --config grape.json` | Recreate worktrees from config after removing non-default worktrees and local branches. |
 | `grape reset --yes` | Recreate configured worktrees without asking for confirmation. |
 | `grape version` | Show the build version and commit hash. |

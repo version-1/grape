@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	grape "github.com/version-1/grape"
 	"github.com/version-1/grape/internal/color"
 	"github.com/version-1/grape/internal/config"
 	"github.com/version-1/grape/internal/logging"
@@ -23,14 +24,14 @@ type WorktreeRunner interface {
 }
 
 type App struct {
-	client            worktree.Client
-	runner            WorktreeRunner
-	readFile          config.ReadFileFunc
-	pathResolver      config.PathResolver
-	exampleConfigPath string
-	version           string
-	commit            string
-	colors            color.Policy
+	client        worktree.Client
+	runner        WorktreeRunner
+	readFile      config.ReadFileFunc
+	pathResolver  config.PathResolver
+	exampleConfig []byte
+	version       string
+	commit        string
+	colors        color.Policy
 }
 
 func (a App) WithColorPolicy(policy color.Policy) App {
@@ -40,13 +41,13 @@ func (a App) WithColorPolicy(policy color.Policy) App {
 
 func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFileFunc) App {
 	application := App{
-		client:            client,
-		runner:            runner,
-		readFile:          readFile,
-		pathResolver:      config.DefaultPathResolver(),
-		exampleConfigPath: "grape.example.json",
-		version:           "dev",
-		commit:            "unknown",
+		client:        client,
+		runner:        runner,
+		readFile:      readFile,
+		pathResolver:  config.DefaultPathResolver(),
+		exampleConfig: grape.ExampleConfig(),
+		version:       "dev",
+		commit:        "unknown",
 	}
 	if readFile == nil {
 		application.readFile = func(string) ([]byte, error) { return nil, os.ErrNotExist }
@@ -59,8 +60,8 @@ func New(client worktree.Client, runner WorktreeRunner, readFile config.ReadFile
 	return application
 }
 
-func (a App) WithExampleConfigPath(path string) App {
-	a.exampleConfigPath = path
+func (a App) WithExampleConfig(exampleConfig []byte) App {
+	a.exampleConfig = exampleConfig
 	return a
 }
 
@@ -182,7 +183,7 @@ Commands:
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
   push      Safely push the current branch to origin.
   rebase    Rebase the current branch when allowed by config.
-  init      Create grape.json in the resolved config home from grape.example.json.
+  init      Create grape.json in the resolved config home from the bundled example.
   version   Show the build version and commit hash.
   help      Show this help.
 
@@ -221,7 +222,7 @@ func (a App) runInit(args []string, stdout io.Writer, logger logging.Logger) int
 		return 1
 	}
 	destination := filepath.Join(grapeHome, "grape.json")
-	if err := config.Initialize(a.exampleConfigPath, destination); err != nil {
+	if err := config.Initialize(a.exampleConfig, destination); err != nil {
 		if errors.Is(err, config.ErrConfigAlreadyExists) {
 			logger.Error("config already exists: %s", destination)
 			return 1

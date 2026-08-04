@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	grape "github.com/version-1/grape"
 	"github.com/version-1/grape/internal/config"
 	"github.com/version-1/grape/internal/worktree"
 )
@@ -260,14 +261,10 @@ func TestRunVersionShowsBuildInfo(t *testing.T) {
 
 func TestRunInitCreatesConfigInGrapeHome(t *testing.T) {
 	temporaryDir := t.TempDir()
-	examplePath := filepath.Join(temporaryDir, "grape.example.json")
-	want := []byte(`{"worktrees":[]}`)
-	if err := os.WriteFile(examplePath, want, 0o600); err != nil {
-		t.Fatalf("write example: %v", err)
-	}
+	t.Chdir(temporaryDir)
+	want := grape.ExampleConfig()
 	stdout := &bytes.Buffer{}
 	app := New(&fakeClient{}, &fakeRunner{}, nil).
-		WithExampleConfigPath(examplePath).
 		WithPathResolver(config.PathResolver{
 			Env:      func(string) string { return "" },
 			UserHome: func() (string, error) { return temporaryDir, nil },
@@ -291,10 +288,6 @@ func TestRunInitCreatesConfigInGrapeHome(t *testing.T) {
 
 func TestRunInitDoesNotOverwriteExistingConfig(t *testing.T) {
 	temporaryDir := t.TempDir()
-	examplePath := filepath.Join(temporaryDir, "grape.example.json")
-	if err := os.WriteFile(examplePath, []byte(`{"worktrees":["example"]}`), 0o600); err != nil {
-		t.Fatalf("write example: %v", err)
-	}
 	destination := filepath.Join(temporaryDir, ".grape", "grape.json")
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		t.Fatalf("create config directory: %v", err)
@@ -305,7 +298,7 @@ func TestRunInitDoesNotOverwriteExistingConfig(t *testing.T) {
 	}
 	stderr := &bytes.Buffer{}
 	app := New(&fakeClient{}, &fakeRunner{}, nil).
-		WithExampleConfigPath(examplePath).
+		WithExampleConfig([]byte(`{"worktrees":["example"]}`)).
 		WithPathResolver(config.PathResolver{
 			Env:      func(string) string { return "" },
 			UserHome: func() (string, error) { return temporaryDir, nil },
