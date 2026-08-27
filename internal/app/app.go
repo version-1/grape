@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/version-1/grape/internal/color"
 	"github.com/version-1/grape/internal/config"
@@ -603,23 +605,23 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	for _, item := range removeTargets {
-		if code := a.removeWorktreeOnly(ctx, item, true, false, stdout, stderr); code != 0 {
-			return code
-		}
+	if index, err := runInPairs(removeTargets, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
+		return a.client.RemoveWorktree(ctx, item.Path, true, operationStdout, operationStderr)
+	}, stdout, stderr); err != nil {
+		logger.Error("remove worktree %s: %v", removeTargets[index].Path, err)
+		return 1
 	}
 
-	for _, branch := range deleteTargets {
-		if code := a.deleteBranch(ctx, branch, false, stdout, stderr); code != 0 {
-			return code
-		}
+	if err := a.client.DeleteBranches(ctx, deleteTargets, stdout, stderr); err != nil {
+		logger.Error("delete branches: %v", err)
+		return 1
 	}
 
-	for _, item := range resetConfig.Worktrees {
-		if err := a.client.AddWorktree(ctx, item, defaultBranch, stdout, stderr); err != nil {
-			logger.Error("add worktree %s: %v", item.Path, err)
-			return 1
-		}
+	if index, err := runInPairs(resetConfig.Worktrees, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
+		return a.client.AddWorktree(ctx, item, defaultBranch, operationStdout, operationStderr)
+	}, stdout, stderr); err != nil {
+		logger.Error("add worktree %s: %v", resetConfig.Worktrees[index].Path, err)
+		return 1
 	}
 
 	branches, err = a.client.ListBranches(ctx)
@@ -630,6 +632,53 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	showBranches(stdout, branches, a.colors.Stdout)
 
 	return 0
+}
+
+type pairedOperationResult struct {
+	index  int
+	stdout string
+	stderr string
+	err    error
+}
+
+// runInPairs executes adjacent operations concurrently. It waits for both
+// operations in a pair before starting another pair, so an error cannot cause
+// additional work beyond the operations already started. Output is emitted in
+// input order after each pair completes.
+func runInPairs[T any](items []T, operation func(T, io.Writer, io.Writer) error, stdout io.Writer, stderr io.Writer) (int, error) {
+	for start := 0; start < len(items); start += 2 {
+		end := min(start+2, len(items))
+		results := make([]pairedOperationResult, end-start)
+		var waitGroup sync.WaitGroup
+
+		for index := start; index < end; index++ {
+			waitGroup.Add(1)
+			go func(index int) {
+				defer waitGroup.Done()
+				operationStdout := &bytes.Buffer{}
+				operationStderr := &bytes.Buffer{}
+				err := operation(items[index], operationStdout, operationStderr)
+				results[index-start] = pairedOperationResult{
+					index:  index,
+					stdout: operationStdout.String(),
+					stderr: operationStderr.String(),
+					err:    err,
+				}
+			}(index)
+		}
+
+		waitGroup.Wait()
+		for _, result := range results {
+			_, _ = io.WriteString(stdout, result.stdout)
+			_, _ = io.WriteString(stderr, result.stderr)
+		}
+		for _, result := range results {
+			if result.err != nil {
+				return result.index, result.err
+			}
+		}
+	}
+	return -1, nil
 }
 
 func showResetTargets(stdout io.Writer, removeTargets []worktree.Worktree, deleteTargets []string, colorEnabled bool) {

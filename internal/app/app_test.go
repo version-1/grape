@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/version-1/grape/internal/config"
@@ -44,6 +45,7 @@ func (e fakeExitError) ExitCode() int {
 }
 
 type fakeClient struct {
+	mu              sync.Mutex
 	worktrees       []worktree.Worktree
 	branches        []string
 	branchListErr   error
@@ -72,6 +74,9 @@ type fakeClient struct {
 	rebaseStdout    io.Writer
 	rebaseStderr    io.Writer
 	gitCalls        []string
+	removeHook      func(string)
+	addHook         func(worktree.ConfiguredItem)
+	deleteHook      func([]string)
 }
 
 func (c *fakeClient) CurrentBranch(context.Context) (string, error) {
@@ -124,14 +129,30 @@ func (c *fakeClient) ListWorktrees(context.Context) ([]worktree.Worktree, error)
 }
 
 func (c *fakeClient) RemoveWorktree(_ context.Context, path string, force bool, _ io.Writer, _ io.Writer) error {
+	if c.removeHook != nil {
+		c.removeHook(path)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.removed = append(c.removed, path)
 	c.removedForce = append(c.removedForce, force)
 	return c.removeErr
 }
 
 func (c *fakeClient) DeleteBranch(_ context.Context, branch string, _ io.Writer, _ io.Writer) error {
-	c.deleted = append(c.deleted, branch)
-	c.branches = slices.DeleteFunc(c.branches, func(candidate string) bool { return candidate == branch })
+	return c.DeleteBranches(context.Background(), []string{branch}, io.Discard, io.Discard)
+}
+
+func (c *fakeClient) DeleteBranches(_ context.Context, branches []string, _ io.Writer, _ io.Writer) error {
+	if c.deleteHook != nil {
+		c.deleteHook(branches)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, branch := range branches {
+		c.deleted = append(c.deleted, branch)
+		c.branches = slices.DeleteFunc(c.branches, func(candidate string) bool { return candidate == branch })
+	}
 	return c.deleteErr
 }
 
@@ -148,6 +169,11 @@ func (c *fakeClient) DefaultBranch(context.Context) (string, error) {
 }
 
 func (c *fakeClient) AddWorktree(_ context.Context, item worktree.ConfiguredItem, defaultBranch string, _ io.Writer, _ io.Writer) error {
+	if c.addHook != nil {
+		c.addHook(item)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.added = append(c.added, item)
 	c.addedDefaults = append(c.addedDefaults, defaultBranch)
 	if !slices.Contains(c.branches, item.Branch) {
@@ -523,7 +549,8 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 			t.Fatalf("stdout contains progress log %q: %q", unwanted, stdout)
 		}
 	}
-	if !slices.Equal(client.removed, []string{"/repo-feature", "/repo-detached"}) {
+	slices.Sort(client.removed)
+	if !slices.Equal(client.removed, []string{"/repo-detached", "/repo-feature"}) {
 		t.Fatalf("removed = %#v, want %#v", client.removed, []string{"/repo-feature", "/repo-detached"})
 	}
 	if !slices.Equal(client.removedForce, []bool{true, true}) {
@@ -536,12 +563,121 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 		{Path: "../repo-feature-one", Branch: "feature/one"},
 		{Path: "../repo-feature-two", Branch: "feature/two", StartPoint: "origin/develop"},
 	}
+	slices.SortFunc(client.added, func(left, right worktree.ConfiguredItem) int {
+		return strings.Compare(left.Path, right.Path)
+	})
 	if !slices.Equal(client.added, wantAdded) {
 		t.Fatalf("added = %#v, want %#v", client.added, wantAdded)
 	}
 	if !slices.Equal(client.addedDefaults, []string{"main", "main"}) {
 		t.Fatalf("addedDefaults = %#v, want %#v", client.addedDefaults, []string{"main", "main"})
 	}
+}
+
+func TestRunResetBatchesBranchDeletion(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{{Path: "/repo", Branch: "main", Main: true}},
+		branches:  []string{"feature/one", "feature/two", "main"},
+	}
+	var deleteCalls [][]string
+	client.deleteHook = func(branches []string) {
+		deleteCalls = append(deleteCalls, append([]string(nil), branches...))
+	}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+
+	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if len(deleteCalls) != 1 || !slices.Equal(deleteCalls[0], []string{"feature/one", "feature/two"}) {
+		t.Fatalf("delete calls = %#v, want one batch", deleteCalls)
+	}
+}
+
+func TestRunResetWaitsForRemovalPairBeforeDeletingBranches(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new-one","branch":"feature/new-one"},{"path":"../repo-new-two","branch":"feature/new-two"}]}`)
+	removalsStarted := make(chan string, 2)
+	allowRemovals := make(chan struct{})
+	branchesDeleted := make(chan []string, 1)
+	additionsStarted := make(chan string, 2)
+	allowAdditions := make(chan struct{})
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{
+			{Path: "/repo", Branch: "main", Main: true},
+			{Path: "/repo-one", Branch: "feature/one"},
+			{Path: "/repo-two", Branch: "feature/two"},
+		},
+		branches: []string{"feature/one", "feature/two", "main"},
+	}
+	client.removeHook = func(path string) {
+		removalsStarted <- path
+		<-allowRemovals
+	}
+	client.deleteHook = func(branches []string) { branchesDeleted <- branches }
+	client.addHook = func(item worktree.ConfiguredItem) {
+		additionsStarted <- item.Path
+		<-allowAdditions
+	}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+	result := make(chan int, 1)
+	go func() { result <- app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, io.Discard) }()
+
+	<-removalsStarted
+	<-removalsStarted
+	select {
+	case branches := <-branchesDeleted:
+		t.Fatalf("branches deleted before removals completed: %#v", branches)
+	default:
+	}
+	allowRemovals <- struct{}{}
+	allowRemovals <- struct{}{}
+
+	select {
+	case branches := <-branchesDeleted:
+		if !slices.Equal(branches, []string{"feature/one", "feature/two"}) {
+			t.Fatalf("deleted branches = %#v", branches)
+		}
+	case <-result:
+		t.Fatal("reset completed before deleting branches")
+	}
+	<-additionsStarted
+	<-additionsStarted
+	allowAdditions <- struct{}{}
+	allowAdditions <- struct{}{}
+	if code := <-result; code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+}
+
+func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{
+			{Path: "/repo", Branch: "main", Main: true},
+			{Path: "/repo-one", Branch: "feature/one"},
+			{Path: "/repo-two", Branch: "feature/two"},
+			{Path: "/repo-three", Branch: "feature/three"},
+		},
+		branches:  []string{"feature/one", "feature/two", "feature/three", "main"},
+		removeErr: errors.New("remove failed"),
+	}
+	stderr := &bytes.Buffer{}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+
+	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, stderr)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if len(client.removed) != 2 {
+		t.Fatalf("removed = %#v, want only the first pair", client.removed)
+	}
+	if len(client.deleted) != 0 || len(client.added) != 0 {
+		t.Fatalf("continued after removal failure: deleted=%#v added=%#v", client.deleted, client.added)
+	}
+	assertContains(t, stderr.String(), "remove worktree /repo-one: remove failed")
 }
 
 func TestRunResetYesSkipsConfirmation(t *testing.T) {

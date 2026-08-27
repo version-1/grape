@@ -125,6 +125,21 @@ func TestCommandClientRemoveWorktreeUsesExactArguments(t *testing.T) {
 	}
 }
 
+func TestCommandClientDeleteBranchesUsesOneInvocation(t *testing.T) {
+	var got []string
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, _ io.Writer, _ io.Writer) error {
+		got = append([]string(nil), args...)
+		return nil
+	}}
+
+	if err := client.DeleteBranches(context.Background(), []string{"feature/one", "feature/two"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("DeleteBranches() error = %v", err)
+	}
+	if !slices.Equal(got, []string{"branch", "-D", "feature/one", "feature/two"}) {
+		t.Fatalf("args = %#v", got)
+	}
+}
+
 func TestCommandClientOriginURLSelection(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -28,6 +28,7 @@ type Client interface {
 	ListWorktrees(context.Context) ([]Worktree, error)
 	RemoveWorktree(context.Context, string, bool, io.Writer, io.Writer) error
 	DeleteBranch(context.Context, string, io.Writer, io.Writer) error
+	DeleteBranches(context.Context, []string, io.Writer, io.Writer) error
 	ListBranches(context.Context) ([]string, error)
 	DefaultBranch(context.Context) (string, error)
 	AddWorktree(context.Context, ConfiguredItem, string, io.Writer, io.Writer) error
@@ -80,7 +81,15 @@ func (c CommandClient) RemoveWorktree(ctx context.Context, path string, force bo
 }
 
 func (c CommandClient) DeleteBranch(ctx context.Context, branch string, stdout io.Writer, stderr io.Writer) error {
-	return c.run(ctx, []string{"branch", "-D", branch}, nil, stdout, stderr)
+	return c.DeleteBranches(ctx, []string{branch}, stdout, stderr)
+}
+
+func (c CommandClient) DeleteBranches(ctx context.Context, branches []string, stdout io.Writer, stderr io.Writer) error {
+	if len(branches) == 0 {
+		return nil
+	}
+	args := append([]string{"branch", "-D"}, branches...)
+	return c.run(ctx, args, nil, stdout, stderr)
 }
 
 func (c CommandClient) ListBranches(ctx context.Context) ([]string, error) {
