@@ -586,7 +586,7 @@ func TestRunResetBatchesBranchDeletion(t *testing.T) {
 	}
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
 
-	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, io.Discard)
+	code := app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, io.Discard, io.Discard)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -622,7 +622,9 @@ func TestRunResetWaitsForRemovalPairBeforeDeletingBranches(t *testing.T) {
 	}
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
 	result := make(chan int, 1)
-	go func() { result <- app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, io.Discard) }()
+	go func() {
+		result <- app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, io.Discard, io.Discard)
+	}()
 
 	<-removalsStarted
 	<-removalsStarted
@@ -666,7 +668,7 @@ func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
 	stderr := &bytes.Buffer{}
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
 
-	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, stderr)
+	code := app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, io.Discard, stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
@@ -690,7 +692,7 @@ func TestRunResetStopsAfterFailingAdditions(t *testing.T) {
 	stderr := &bytes.Buffer{}
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
 
-	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, stderr)
+	code := app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, io.Discard, stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
