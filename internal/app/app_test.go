@@ -680,6 +680,74 @@ func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
 	assertContains(t, stderr.String(), "remove worktree /repo-one: remove failed")
 }
 
+func TestRunResetStopsAfterFailingAdditions(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-one","branch":"feature/one"},{"path":"../repo-two","branch":"feature/two"},{"path":"../repo-three","branch":"feature/three"}]}`)
+	client := &fakeClient{
+		worktrees: []worktree.Worktree{{Path: "/repo", Branch: "main", Main: true}},
+		branches:  []string{"main"},
+		addErr:    errors.New("add failed"),
+	}
+	stderr := &bytes.Buffer{}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+
+	code := app.Run(context.Background(), []string{"reset", "-y"}, nil, io.Discard, stderr)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if len(client.added) != 2 {
+		t.Fatalf("added = %#v, want only the first two started additions", client.added)
+	}
+	if client.branchLists != 1 {
+		t.Fatalf("branch lists = %d, want no final branch list", client.branchLists)
+	}
+	assertContains(t, stderr.String(), "add worktree ../repo-one: add failed")
+}
+
+func TestRunWithConcurrencyLimitStartsNextOperationWhenSlotFrees(t *testing.T) {
+	started := make(chan int, 3)
+	releaseFirst := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	releaseThird := make(chan struct{})
+	result := make(chan error, 1)
+
+	go func() {
+		_, err := runWithConcurrencyLimit([]int{0, 1, 2}, 2, func(item int, _ io.Writer, _ io.Writer) error {
+			started <- item
+			switch item {
+			case 0:
+				<-releaseFirst
+			case 1:
+				<-releaseSecond
+			case 2:
+				<-releaseThird
+			}
+			return nil
+		}, io.Discard, io.Discard)
+		result <- err
+	}()
+
+	first := <-started
+	second := <-started
+	if first == second {
+		t.Fatalf("initial operations = %d, %d", first, second)
+	}
+	select {
+	case item := <-started:
+		t.Fatalf("operation %d started before a slot was freed", item)
+	default:
+	}
+	releaseFirst <- struct{}{}
+	if item := <-started; item != 2 {
+		t.Fatalf("started item = %d, want 2 after a slot was freed", item)
+	}
+	releaseSecond <- struct{}{}
+	releaseThird <- struct{}{}
+	if err := <-result; err != nil {
+		t.Fatalf("runWithConcurrencyLimit() error = %v", err)
+	}
+}
+
 func TestRunResetYesSkipsConfirmation(t *testing.T) {
 	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-feature","branch":"feature/new"}]}`)
 	client := &fakeClient{

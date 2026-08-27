@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/version-1/grape/internal/color"
 	"github.com/version-1/grape/internal/config"
@@ -605,7 +604,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	if index, err := runInPairs(removeTargets, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
+	if index, err := runWithConcurrencyLimit(removeTargets, 2, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
 		return a.client.RemoveWorktree(ctx, item.Path, true, operationStdout, operationStderr)
 	}, stdout, stderr); err != nil {
 		logger.Error("remove worktree %s: %v", removeTargets[index].Path, err)
@@ -617,7 +616,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	if index, err := runInPairs(resetConfig.Worktrees, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
+	if index, err := runWithConcurrencyLimit(resetConfig.Worktrees, 2, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
 		return a.client.AddWorktree(ctx, item, defaultBranch, operationStdout, operationStderr)
 	}, stdout, stderr); err != nil {
 		logger.Error("add worktree %s: %v", resetConfig.Worktrees[index].Path, err)
@@ -634,48 +633,60 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	return 0
 }
 
-type pairedOperationResult struct {
+type concurrentOperationResult struct {
 	index  int
 	stdout string
 	stderr string
 	err    error
 }
 
-// runInPairs executes adjacent operations concurrently. It waits for both
-// operations in a pair before starting another pair, so an error cannot cause
-// additional work beyond the operations already started. Output is emitted in
-// input order after each pair completes.
-func runInPairs[T any](items []T, operation func(T, io.Writer, io.Writer) error, stdout io.Writer, stderr io.Writer) (int, error) {
-	for start := 0; start < len(items); start += 2 {
-		end := min(start+2, len(items))
-		results := make([]pairedOperationResult, end-start)
-		var waitGroup sync.WaitGroup
+// runWithConcurrencyLimit keeps up to limit operations active. Once an error
+// is observed, it waits for started operations and does not start new ones.
+// Output and errors are reported in input order.
+func runWithConcurrencyLimit[T any](items []T, limit int, operation func(T, io.Writer, io.Writer) error, stdout io.Writer, stderr io.Writer) (int, error) {
+	results := make([]concurrentOperationResult, len(items))
+	completed := make(chan concurrentOperationResult, limit)
+	nextIndex := 0
+	active := 0
+	failed := false
 
-		for index := start; index < end; index++ {
-			waitGroup.Add(1)
-			go func(index int) {
-				defer waitGroup.Done()
-				operationStdout := &bytes.Buffer{}
-				operationStderr := &bytes.Buffer{}
-				err := operation(items[index], operationStdout, operationStderr)
-				results[index-start] = pairedOperationResult{
-					index:  index,
-					stdout: operationStdout.String(),
-					stderr: operationStderr.String(),
-					err:    err,
-				}
-			}(index)
-		}
-
-		waitGroup.Wait()
-		for _, result := range results {
-			_, _ = io.WriteString(stdout, result.stdout)
-			_, _ = io.WriteString(stderr, result.stderr)
-		}
-		for _, result := range results {
-			if result.err != nil {
-				return result.index, result.err
+	start := func(index int) {
+		active++
+		go func() {
+			operationStdout := &bytes.Buffer{}
+			operationStderr := &bytes.Buffer{}
+			err := operation(items[index], operationStdout, operationStderr)
+			completed <- concurrentOperationResult{
+				index:  index,
+				stdout: operationStdout.String(),
+				stderr: operationStderr.String(),
+				err:    err,
 			}
+		}()
+	}
+
+	for active < limit && nextIndex < len(items) {
+		start(nextIndex)
+		nextIndex++
+	}
+	for active > 0 {
+		result := <-completed
+		results[result.index] = result
+		active--
+		if result.err != nil {
+			failed = true
+		}
+		if !failed && nextIndex < len(items) {
+			start(nextIndex)
+			nextIndex++
+		}
+	}
+
+	for _, result := range results[:nextIndex] {
+		_, _ = io.WriteString(stdout, result.stdout)
+		_, _ = io.WriteString(stderr, result.stderr)
+		if result.err != nil {
+			return result.index, result.err
 		}
 	}
 	return -1, nil
