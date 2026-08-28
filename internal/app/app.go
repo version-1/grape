@@ -377,6 +377,11 @@ type resetOptions struct {
 	Yes        bool
 }
 
+const (
+	resetRemoveConcurrency = 5
+	resetAddConcurrency    = 1
+)
+
 func parseResetOptions(args []string) (resetOptions, error) {
 	flags := flag.NewFlagSet("reset", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -604,7 +609,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	if index, err := runWithConcurrencyLimit(removeTargets, 2, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
+	if index, err := runWithConcurrencyLimit(removeTargets, resetRemoveConcurrency, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
 		return a.client.RemoveWorktree(ctx, item.Path, true, operationStdout, operationStderr)
 	}, stdout, stderr); err != nil {
 		logger.Error("remove worktree %s: %v", removeTargets[index].Path, err)
@@ -616,7 +621,7 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	if index, err := runWithConcurrencyLimit(resetConfig.Worktrees, 2, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
+	if index, err := runWithConcurrencyLimit(resetConfig.Worktrees, resetAddConcurrency, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
 		return a.client.AddWorktree(ctx, item, defaultBranch, operationStdout, operationStderr)
 	}, stdout, stderr); err != nil {
 		logger.Error("add worktree %s: %v", resetConfig.Worktrees[index].Path, err)

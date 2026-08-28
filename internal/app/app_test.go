@@ -596,7 +596,7 @@ func TestRunResetBatchesBranchDeletion(t *testing.T) {
 	}
 }
 
-func TestRunResetWaitsForRemovalPairBeforeDeletingBranches(t *testing.T) {
+func TestRunResetWaitsForWorktreeRemovalBeforeDeletingBranchesAndAddsSerially(t *testing.T) {
 	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new-one","branch":"feature/new-one"},{"path":"../repo-new-two","branch":"feature/new-two"}]}`)
 	removalsStarted := make(chan string, 2)
 	allowRemovals := make(chan struct{})
@@ -645,8 +645,13 @@ func TestRunResetWaitsForRemovalPairBeforeDeletingBranches(t *testing.T) {
 		t.Fatal("reset completed before deleting branches")
 	}
 	<-additionsStarted
-	<-additionsStarted
+	select {
+	case path := <-additionsStarted:
+		t.Fatalf("addition started before the previous addition completed: %s", path)
+	default:
+	}
 	allowAdditions <- struct{}{}
+	<-additionsStarted
 	allowAdditions <- struct{}{}
 	if code := <-result; code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -673,8 +678,8 @@ func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if len(client.removed) != 2 {
-		t.Fatalf("removed = %#v, want only the first pair", client.removed)
+	if len(client.removed) != 3 {
+		t.Fatalf("removed = %#v, want all initially started removals", client.removed)
 	}
 	if len(client.deleted) != 0 || len(client.added) != 0 {
 		t.Fatalf("continued after removal failure: deleted=%#v added=%#v", client.deleted, client.added)
@@ -697,8 +702,8 @@ func TestRunResetStopsAfterFailingAdditions(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if len(client.added) != 2 {
-		t.Fatalf("added = %#v, want only the first two started additions", client.added)
+	if len(client.added) != 1 {
+		t.Fatalf("added = %#v, want only the failed serial addition", client.added)
 	}
 	if client.branchLists != 1 {
 		t.Fatalf("branch lists = %d, want no final branch list", client.branchLists)
@@ -706,45 +711,43 @@ func TestRunResetStopsAfterFailingAdditions(t *testing.T) {
 	assertContains(t, stderr.String(), "add worktree ../repo-one: add failed")
 }
 
-func TestRunWithConcurrencyLimitStartsNextOperationWhenSlotFrees(t *testing.T) {
-	started := make(chan int, 3)
-	releaseFirst := make(chan struct{})
-	releaseSecond := make(chan struct{})
-	releaseThird := make(chan struct{})
+func TestRunWithConcurrencyLimitKeepsFiveRemovalsActive(t *testing.T) {
+	started := make(chan int, 6)
+	releases := make([]chan struct{}, 6)
+	for index := range releases {
+		releases[index] = make(chan struct{})
+	}
 	result := make(chan error, 1)
 
 	go func() {
-		_, err := runWithConcurrencyLimit([]int{0, 1, 2}, 2, func(item int, _ io.Writer, _ io.Writer) error {
+		_, err := runWithConcurrencyLimit([]int{0, 1, 2, 3, 4, 5}, resetRemoveConcurrency, func(item int, _ io.Writer, _ io.Writer) error {
 			started <- item
-			switch item {
-			case 0:
-				<-releaseFirst
-			case 1:
-				<-releaseSecond
-			case 2:
-				<-releaseThird
-			}
+			<-releases[item]
 			return nil
 		}, io.Discard, io.Discard)
 		result <- err
 	}()
 
-	first := <-started
-	second := <-started
-	if first == second {
-		t.Fatalf("initial operations = %d, %d", first, second)
+	initial := map[int]struct{}{}
+	for range resetRemoveConcurrency {
+		item := <-started
+		if _, exists := initial[item]; exists {
+			t.Fatalf("operation %d started twice", item)
+		}
+		initial[item] = struct{}{}
 	}
 	select {
 	case item := <-started:
-		t.Fatalf("operation %d started before a slot was freed", item)
+		t.Fatalf("operation %d started before one of five active operations completed", item)
 	default:
 	}
-	releaseFirst <- struct{}{}
-	if item := <-started; item != 2 {
-		t.Fatalf("started item = %d, want 2 after a slot was freed", item)
+	releases[0] <- struct{}{}
+	if item := <-started; item != 5 {
+		t.Fatalf("started item = %d, want 5 after a slot was freed", item)
 	}
-	releaseSecond <- struct{}{}
-	releaseThird <- struct{}{}
+	for index := 1; index < len(releases); index++ {
+		releases[index] <- struct{}{}
+	}
 	if err := <-result; err != nil {
 		t.Fatalf("runWithConcurrencyLimit() error = %v", err)
 	}
