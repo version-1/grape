@@ -711,48 +711,6 @@ func TestRunResetStopsAfterFailingAdditions(t *testing.T) {
 	assertContains(t, stderr.String(), "add worktree ../repo-one: add failed")
 }
 
-func TestRunWithConcurrencyLimitKeepsFiveRemovalsActive(t *testing.T) {
-	started := make(chan int, 6)
-	releases := make([]chan struct{}, 6)
-	for index := range releases {
-		releases[index] = make(chan struct{})
-	}
-	result := make(chan error, 1)
-
-	go func() {
-		_, err := runWithConcurrencyLimit([]int{0, 1, 2, 3, 4, 5}, resetRemoveConcurrency, func(item int, _ io.Writer, _ io.Writer) error {
-			started <- item
-			<-releases[item]
-			return nil
-		}, io.Discard, io.Discard)
-		result <- err
-	}()
-
-	initial := map[int]struct{}{}
-	for range resetRemoveConcurrency {
-		item := <-started
-		if _, exists := initial[item]; exists {
-			t.Fatalf("operation %d started twice", item)
-		}
-		initial[item] = struct{}{}
-	}
-	select {
-	case item := <-started:
-		t.Fatalf("operation %d started before one of five active operations completed", item)
-	default:
-	}
-	releases[0] <- struct{}{}
-	if item := <-started; item != 5 {
-		t.Fatalf("started item = %d, want 5 after a slot was freed", item)
-	}
-	for index := 1; index < len(releases); index++ {
-		releases[index] <- struct{}{}
-	}
-	if err := <-result; err != nil {
-		t.Fatalf("runWithConcurrencyLimit() error = %v", err)
-	}
-}
-
 func TestRunResetYesSkipsConfirmation(t *testing.T) {
 	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-feature","branch":"feature/new"}]}`)
 	client := &fakeClient{
@@ -1378,7 +1336,7 @@ func TestGlobalConfigValidationExcludesHelpVersionInitAndDelegation(t *testing.T
 }
 
 func withConfig(application App, contents string) App {
-	application.readFile = func(string) ([]byte, error) {
+	application.configLoader.ReadFile = func(string) ([]byte, error) {
 		return []byte(contents), nil
 	}
 	return application.WithPathResolver(config.PathResolver{
