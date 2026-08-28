@@ -140,6 +140,24 @@ func TestCommandClientDeleteBranchesUsesOneInvocation(t *testing.T) {
 	}
 }
 
+func TestCommandClientListRawBranchesUsesGitBranchAndPreservesStreams(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, gotStdout io.Writer, gotStderr io.Writer) error {
+		if !slices.Equal(args, []string{"branch"}) {
+			t.Fatalf("args = %#v, want %#v", args, []string{"branch"})
+		}
+		if gotStdout != stdout || gotStderr != stderr {
+			t.Fatal("branch streams were not preserved")
+		}
+		return nil
+	}}
+
+	if err := client.ListRawBranches(context.Background(), stdout, stderr); err != nil {
+		t.Fatalf("ListRawBranches() error = %v", err)
+	}
+}
+
 func TestCommandClientOriginURLSelection(t *testing.T) {
 	tests := []struct {
 		name      string

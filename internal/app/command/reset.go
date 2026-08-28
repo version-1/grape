@@ -26,6 +26,7 @@ type ResetClient interface {
 	RemoveWorktree(context.Context, string, bool, io.Writer, io.Writer) error
 	DeleteBranches(context.Context, []string, io.Writer, io.Writer) error
 	AddWorktree(context.Context, worktree.ConfiguredItem, string, io.Writer, io.Writer) error
+	ListRawBranches(context.Context, io.Writer, io.Writer) error
 }
 type ResetCommand struct {
 	Client ResetClient
@@ -111,31 +112,34 @@ func (c ResetCommand) Run(ctx context.Context, args []string, streams Streams, l
 		}
 	}
 	showResetTargets(streams.Out, removals, deletes, c.Colors.Stdout)
+	showResetCounts(streams.Out, len(removals), len(cfg.Worktrees), c.Colors.Stdout)
 	if !options.Yes && !confirmReset(streams.In, streams.Out, c.Colors.Stdout, logger) {
 		return 1
 	}
+	fmt.Fprintln(streams.Out, ui.Paint(c.Colors.Stdout, "Removing worktrees...", ui.Bold))
 	if index, err := runWithConcurrencyLimit(removals, resetRemoveConcurrency, func(item worktree.Worktree, out, errOut io.Writer) error {
 		return c.Client.RemoveWorktree(ctx, item.Path, true, out, errOut)
-	}, streams.Out, streams.Err); err != nil {
+	}, io.Discard, streams.Err); err != nil {
 		logger.Error("remove worktree %s: %v", removals[index].Path, err)
 		return 1
 	}
-	if err := c.Client.DeleteBranches(ctx, deletes, streams.Out, streams.Err); err != nil {
+	fmt.Fprintln(streams.Out, ui.Paint(c.Colors.Stdout, "Deleting local branches...", ui.Bold))
+	if err := c.Client.DeleteBranches(ctx, deletes, io.Discard, streams.Err); err != nil {
 		logger.Error("delete branches: %v", err)
 		return 1
 	}
+	fmt.Fprintln(streams.Out, ui.Paint(c.Colors.Stdout, "Adding worktrees...", ui.Bold))
 	if index, err := runWithConcurrencyLimit(cfg.Worktrees, resetAddConcurrency, func(item worktree.ConfiguredItem, out, errOut io.Writer) error {
 		return c.Client.AddWorktree(ctx, item, defaultBranch, out, errOut)
-	}, streams.Out, streams.Err); err != nil {
+	}, io.Discard, streams.Err); err != nil {
 		logger.Error("add worktree %s: %v", cfg.Worktrees[index].Path, err)
 		return 1
 	}
-	branches, err = c.Client.ListBranches(ctx)
-	if err != nil {
+	fmt.Fprintln(streams.Out, ui.Paint(c.Colors.Stdout, "Branches", ui.Bold))
+	if err := c.Client.ListRawBranches(ctx, streams.Out, streams.Err); err != nil {
 		logger.Error("list branches: %v", err)
 		return 1
 	}
-	showBranches(streams.Out, branches, c.Colors.Stdout)
 	return 0
 }
 
@@ -200,6 +204,10 @@ func showResetTargets(stdout io.Writer, removals []worktree.Worktree, deletes []
 		}
 	}
 }
+func showResetCounts(stdout io.Writer, removalCount, additionCount int, enabled bool) {
+	fmt.Fprintf(stdout, "%s %d\n", ui.Paint(enabled, "Worktrees to remove:", ui.Bold), removalCount)
+	fmt.Fprintf(stdout, "%s %d\n", ui.Paint(enabled, "Worktrees to add:", ui.Bold), additionCount)
+}
 func confirmReset(stdin io.Reader, stdout io.Writer, enabled bool, logger logging.Logger) bool {
 	fmt.Fprint(stdout, ui.Paint(enabled, "Proceed with reset? [y/N] ", ui.Red, ui.Bold))
 	if stdin == nil {
@@ -218,10 +226,4 @@ func confirmReset(stdin io.Reader, stdout io.Writer, enabled bool, logger loggin
 	}
 	fmt.Fprintln(stdout, ui.Paint(enabled, "grape: reset cancelled", ui.Dim))
 	return false
-}
-func showBranches(stdout io.Writer, branches []string, enabled bool) {
-	fmt.Fprintln(stdout, ui.Paint(enabled, "Branches", ui.Bold))
-	for _, branch := range branches {
-		fmt.Fprintf(stdout, "  %s\n", ui.Paint(enabled, branch, ui.Green))
-	}
 }

@@ -1,9 +1,33 @@
 package command
 
 import (
+	"bytes"
 	"io"
 	"testing"
 )
+
+func TestShowResetCounts(t *testing.T) {
+	tests := []struct {
+		name          string
+		removalCount  int
+		additionCount int
+		want          string
+	}{
+		{name: "zero", want: "Worktrees to remove: 0\nWorktrees to add: 0\n"},
+		{name: "nonzero", removalCount: 12, additionCount: 3, want: "Worktrees to remove: 12\nWorktrees to add: 3\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+
+			showResetCounts(stdout, test.removalCount, test.additionCount, false)
+
+			if got := stdout.String(); got != test.want {
+				t.Fatalf("showResetCounts() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 func TestRunWithConcurrencyLimitKeepsFiveRemovalsActive(t *testing.T) {
 	started := make(chan int, 6)

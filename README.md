@@ -100,9 +100,9 @@ See the [configuration reference](docs/configuration.md) for the complete `grape
 
 This provides a repeatable way to restore a known worktree layout for coding-agent sessions without manually removing and recreating each worktree.
 
-`grape reset` is destructive, but never removes the main working tree or the branch checked out there. Before deleting anything, it prints the worktrees and branches to delete and continues only after `y` or `yes` confirmation. Use `--yes` or `-y` to skip the prompt. Reset removes its target worktrees with `git worktree remove --force`, regardless of whether confirmation is skipped.
+`grape reset` is destructive, but never removes the main working tree or the branch checked out there. Before deleting anything, it prints the worktrees and branches to delete, plus the counts of worktrees to remove and add, and continues only after `y` or `yes` confirmation. Use `--yes` or `-y` to skip the prompt. Reset removes its target worktrees with `git worktree remove --force`, regardless of whether confirmation is skipped.
 
-After a successful reset, grape prints the complete list of remaining local branches. It does not print per-worktree removal, branch deletion, or worktree creation progress messages.
+Reset prints a phase message before removing worktrees, deleting local branches, and adding worktrees. It suppresses standard output from those Git operations. After a successful reset, grape prints the `git branch` output unchanged.
 
 `reset` requires a non-empty `worktrees` list. See the [configuration reference](docs/configuration.md) for reset fields, examples, discovery, and validation rules.
 
