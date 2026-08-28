@@ -48,6 +48,7 @@ type fakeClient struct {
 	mu              sync.Mutex
 	worktrees       []worktree.Worktree
 	branches        []string
+	rawBranches     string
 	branchListErr   error
 	branchLists     int
 	defaultBranch   string
@@ -55,6 +56,8 @@ type fakeClient struct {
 	removeErr       error
 	deleteErr       error
 	addErr          error
+	gitStdout       string
+	gitStderr       string
 	removed         []string
 	removedForce    []bool
 	deleted         []string
@@ -128,7 +131,9 @@ func (c *fakeClient) ListWorktrees(context.Context) ([]worktree.Worktree, error)
 	return c.worktrees, c.listErr
 }
 
-func (c *fakeClient) RemoveWorktree(_ context.Context, path string, force bool, _ io.Writer, _ io.Writer) error {
+func (c *fakeClient) RemoveWorktree(_ context.Context, path string, force bool, stdout io.Writer, stderr io.Writer) error {
+	_, _ = io.WriteString(stdout, c.gitStdout)
+	_, _ = io.WriteString(stderr, c.gitStderr)
 	if c.removeHook != nil {
 		c.removeHook(path)
 	}
@@ -143,7 +148,9 @@ func (c *fakeClient) DeleteBranch(_ context.Context, branch string, _ io.Writer,
 	return c.DeleteBranches(context.Background(), []string{branch}, io.Discard, io.Discard)
 }
 
-func (c *fakeClient) DeleteBranches(_ context.Context, branches []string, _ io.Writer, _ io.Writer) error {
+func (c *fakeClient) DeleteBranches(_ context.Context, branches []string, stdout io.Writer, stderr io.Writer) error {
+	_, _ = io.WriteString(stdout, c.gitStdout)
+	_, _ = io.WriteString(stderr, c.gitStderr)
 	if c.deleteHook != nil {
 		c.deleteHook(branches)
 	}
@@ -164,11 +171,28 @@ func (c *fakeClient) ListBranches(context.Context) ([]string, error) {
 	return c.branches, c.listErr
 }
 
+func (c *fakeClient) ListRawBranches(_ context.Context, stdout io.Writer, _ io.Writer) error {
+	c.branchLists++
+	if c.branchLists > 1 && c.branchListErr != nil {
+		return c.branchListErr
+	}
+	if c.rawBranches != "" {
+		_, _ = io.WriteString(stdout, c.rawBranches)
+		return nil
+	}
+	for _, branch := range c.branches {
+		_, _ = io.WriteString(stdout, "  "+branch+"\n")
+	}
+	return nil
+}
+
 func (c *fakeClient) DefaultBranch(context.Context) (string, error) {
 	return c.defaultBranch, c.listErr
 }
 
-func (c *fakeClient) AddWorktree(_ context.Context, item worktree.ConfiguredItem, defaultBranch string, _ io.Writer, _ io.Writer) error {
+func (c *fakeClient) AddWorktree(_ context.Context, item worktree.ConfiguredItem, defaultBranch string, stdout io.Writer, stderr io.Writer) error {
+	_, _ = io.WriteString(stdout, c.gitStdout)
+	_, _ = io.WriteString(stderr, c.gitStderr)
 	if c.addHook != nil {
 		c.addHook(item)
 	}
@@ -543,11 +567,11 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 	assertContains(t, stdout.String(), "grape reset will delete:")
 	assertContains(t, stdout.String(), "/repo-feature")
 	assertContains(t, stdout.String(), "feature/orphan")
+	assertContains(t, stdout.String(), "Worktrees to remove: 2")
+	assertContains(t, stdout.String(), "Worktrees to add: 2")
 	assertContains(t, stdout.String(), "Branches\n  feature/current\n  feature/one\n  feature/two\n  main\n")
-	for _, unwanted := range []string{"Removing worktree", "Deleting branch", "Adding worktree"} {
-		if strings.Contains(stdout.String(), unwanted) {
-			t.Fatalf("stdout contains progress log %q: %q", unwanted, stdout)
-		}
+	for _, phase := range []string{"Removing worktrees...", "Deleting local branches...", "Adding worktrees..."} {
+		assertContains(t, stdout.String(), phase)
 	}
 	slices.Sort(client.removed)
 	if !slices.Equal(client.removed, []string{"/repo-detached", "/repo-feature"}) {
@@ -572,6 +596,58 @@ func TestRunResetRemovesNonDefaultWorktreesAndBranchesThenAddsConfiguredWorktree
 	if !slices.Equal(client.addedDefaults, []string{"main", "main"}) {
 		t.Fatalf("addedDefaults = %#v, want %#v", client.addedDefaults, []string{"main", "main"})
 	}
+}
+
+func TestRunResetPrintsPhaseLogsInExecutionOrderAndSuppressesGitStandardOutput(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees:   []worktree.Worktree{{Path: "/repo", Branch: "main", Main: true}, {Path: "/repo-old", Branch: "feature/old"}},
+		branches:    []string{"feature/old", "main"},
+		gitStdout:   "git standard output\n",
+		gitStderr:   "git diagnostic\n",
+		rawBranches: "* main\n  feature/new\n",
+	}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, stdout, stderr)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	output := stdout.String()
+	remove := strings.Index(output, "Removing worktrees...")
+	delete := strings.Index(output, "Deleting local branches...")
+	add := strings.Index(output, "Adding worktrees...")
+	branches := strings.Index(output, "Branches\n* main\n  feature/new\n")
+	if remove < 0 || delete < remove || add < delete || branches < add {
+		t.Fatalf("phase output order is wrong: %q", output)
+	}
+	if strings.Contains(output, "git standard output") {
+		t.Fatalf("stdout contains Git command output: %q", output)
+	}
+	if got := stderr.String(); got != "git diagnostic\ngit diagnostic\ngit diagnostic\n" {
+		t.Fatalf("stderr = %q, want Git diagnostics", got)
+	}
+}
+
+func TestRunResetShowsRawGitBranchOutputUnchanged(t *testing.T) {
+	configData := []byte(`{"default_branch":"main","worktrees":[{"path":"../repo-new","branch":"feature/new"}]}`)
+	client := &fakeClient{
+		worktrees:   []worktree.Worktree{{Path: "/repo", Branch: "main", Main: true}},
+		branches:    []string{"main"},
+		rawBranches: "* main\n  feature/new\n  topic/with spaces\n",
+	}
+	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
+	stdout := &bytes.Buffer{}
+
+	code := app.Run(context.Background(), []string{"reset", "-y", "--config", "grape.json"}, nil, stdout, io.Discard)
+
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	assertContains(t, stdout.String(), "Branches\n* main\n  feature/new\n  topic/with spaces\n")
 }
 
 func TestRunResetBatchesBranchDeletion(t *testing.T) {
@@ -669,6 +745,7 @@ func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
 		},
 		branches:  []string{"feature/one", "feature/two", "feature/three", "main"},
 		removeErr: errors.New("remove failed"),
+		gitStderr: "git remove diagnostic\n",
 	}
 	stderr := &bytes.Buffer{}
 	app := New(client, &fakeRunner{}, func(string) ([]byte, error) { return configData, nil })
@@ -685,6 +762,7 @@ func TestRunResetStopsAfterFailingRemovalPair(t *testing.T) {
 		t.Fatalf("continued after removal failure: deleted=%#v added=%#v", client.deleted, client.added)
 	}
 	assertContains(t, stderr.String(), "remove worktree /repo-one: remove failed")
+	assertContains(t, stderr.String(), "git remove diagnostic")
 }
 
 func TestRunResetStopsAfterFailingAdditions(t *testing.T) {

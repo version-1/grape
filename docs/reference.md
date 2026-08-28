@@ -8,5 +8,5 @@ Built-in command pages:
 
 - [`grape rebase`](../.codex/skills/grape-usage/references/rebase.md)
 - [`grape push`](../.codex/skills/grape-usage/references/push.md)
-- [`grape reset`](../.codex/skills/grape-usage/references/reset.md)
+- [`grape reset`](../.codex/skills/grape-usage/references/reset.md) — destructive reset preview, phase output, and final branch output
 - [All commands](../.codex/skills/grape-usage/references/README.md)

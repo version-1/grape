@@ -30,6 +30,7 @@ type Client interface {
 	DeleteBranch(context.Context, string, io.Writer, io.Writer) error
 	DeleteBranches(context.Context, []string, io.Writer, io.Writer) error
 	ListBranches(context.Context) ([]string, error)
+	ListRawBranches(context.Context, io.Writer, io.Writer) error
 	DefaultBranch(context.Context) (string, error)
 	AddWorktree(context.Context, ConfiguredItem, string, io.Writer, io.Writer) error
 	CurrentBranch(context.Context) (string, error)
@@ -110,6 +111,10 @@ func (c CommandClient) ListBranches(ctx context.Context) ([]string, error) {
 		}
 	}
 	return branches, nil
+}
+
+func (c CommandClient) ListRawBranches(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+	return c.run(ctx, []string{"branch"}, nil, stdout, stderr)
 }
 
 func (c CommandClient) DefaultBranch(ctx context.Context) (string, error) {
