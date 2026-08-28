@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -376,6 +377,11 @@ type resetOptions struct {
 	Yes        bool
 }
 
+const (
+	resetRemoveConcurrency = 5
+	resetAddConcurrency    = 1
+)
+
 func parseResetOptions(args []string) (resetOptions, error) {
 	flags := flag.NewFlagSet("reset", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -603,23 +609,23 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 		return 1
 	}
 
-	for _, item := range removeTargets {
-		if code := a.removeWorktreeOnly(ctx, item, true, false, stdout, stderr); code != 0 {
-			return code
-		}
+	if index, err := runWithConcurrencyLimit(removeTargets, resetRemoveConcurrency, func(item worktree.Worktree, operationStdout io.Writer, operationStderr io.Writer) error {
+		return a.client.RemoveWorktree(ctx, item.Path, true, operationStdout, operationStderr)
+	}, stdout, stderr); err != nil {
+		logger.Error("remove worktree %s: %v", removeTargets[index].Path, err)
+		return 1
 	}
 
-	for _, branch := range deleteTargets {
-		if code := a.deleteBranch(ctx, branch, false, stdout, stderr); code != 0 {
-			return code
-		}
+	if err := a.client.DeleteBranches(ctx, deleteTargets, stdout, stderr); err != nil {
+		logger.Error("delete branches: %v", err)
+		return 1
 	}
 
-	for _, item := range resetConfig.Worktrees {
-		if err := a.client.AddWorktree(ctx, item, defaultBranch, stdout, stderr); err != nil {
-			logger.Error("add worktree %s: %v", item.Path, err)
-			return 1
-		}
+	if index, err := runWithConcurrencyLimit(resetConfig.Worktrees, resetAddConcurrency, func(item worktree.ConfiguredItem, operationStdout io.Writer, operationStderr io.Writer) error {
+		return a.client.AddWorktree(ctx, item, defaultBranch, operationStdout, operationStderr)
+	}, stdout, stderr); err != nil {
+		logger.Error("add worktree %s: %v", resetConfig.Worktrees[index].Path, err)
+		return 1
 	}
 
 	branches, err = a.client.ListBranches(ctx)
@@ -630,6 +636,65 @@ func (a App) runReset(ctx context.Context, args []string, stdin io.Reader, stdou
 	showBranches(stdout, branches, a.colors.Stdout)
 
 	return 0
+}
+
+type concurrentOperationResult struct {
+	index  int
+	stdout string
+	stderr string
+	err    error
+}
+
+// runWithConcurrencyLimit keeps up to limit operations active. Once an error
+// is observed, it waits for started operations and does not start new ones.
+// Output and errors are reported in input order.
+func runWithConcurrencyLimit[T any](items []T, limit int, operation func(T, io.Writer, io.Writer) error, stdout io.Writer, stderr io.Writer) (int, error) {
+	results := make([]concurrentOperationResult, len(items))
+	completed := make(chan concurrentOperationResult, limit)
+	nextIndex := 0
+	active := 0
+	failed := false
+
+	start := func(index int) {
+		active++
+		go func() {
+			operationStdout := &bytes.Buffer{}
+			operationStderr := &bytes.Buffer{}
+			err := operation(items[index], operationStdout, operationStderr)
+			completed <- concurrentOperationResult{
+				index:  index,
+				stdout: operationStdout.String(),
+				stderr: operationStderr.String(),
+				err:    err,
+			}
+		}()
+	}
+
+	for active < limit && nextIndex < len(items) {
+		start(nextIndex)
+		nextIndex++
+	}
+	for active > 0 {
+		result := <-completed
+		results[result.index] = result
+		active--
+		if result.err != nil {
+			failed = true
+		}
+		if !failed && nextIndex < len(items) {
+			start(nextIndex)
+			nextIndex++
+		}
+	}
+
+	for _, result := range results[:nextIndex] {
+		_, _ = io.WriteString(stdout, result.stdout)
+		_, _ = io.WriteString(stderr, result.stderr)
+		if result.err != nil {
+			return result.index, result.err
+		}
+	}
+	return -1, nil
 }
 
 func showResetTargets(stdout io.Writer, removeTargets []worktree.Worktree, deleteTargets []string, colorEnabled bool) {
