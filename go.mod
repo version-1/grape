@@ -1,3 +1,3 @@
 module github.com/version-1/grape
 
-go 1.26
+go 1.26.10
