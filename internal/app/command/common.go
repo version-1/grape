@@ -1,6 +1,9 @@
 package command
 
-import "io"
+import (
+	"errors"
+	"io"
+)
 
 type Streams struct {
 	In  io.Reader
@@ -13,8 +16,8 @@ type ExitCodeError interface {
 }
 
 func ExitCode(err error) (int, bool) {
-	exitErr, ok := err.(ExitCodeError)
-	if !ok {
+	var exitErr ExitCodeError
+	if !errors.As(err, &exitErr) {
 		return 0, false
 	}
 	return exitErr.ExitCode(), true

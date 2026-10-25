@@ -22,6 +22,10 @@ Usage:
   grape reset [--yes|-y] [--config|-c <path>]
   grape push [--force-with-lease]
   grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]
+  grape start-feat|sf <branch-name>
+  grape start-docs|sd <branch-name>
+  grape start-refactor|sr <branch-name>
+  grape start-test|st <branch-name>
   grape init
   grape version
   grape help
@@ -33,6 +37,7 @@ Commands:
   reset     Recreate worktrees from config after removing non-default worktrees and local branches.
   push      Safely push the current branch to origin.
   rebase    Rebase the current branch when allowed by config.
+  start-*   Sync the default branch from origin and create a prefixed branch (sf/sd/sr/st are aliases).
   init      Create grape.json in the resolved config home from grape.example.json.
   version   Show the build version and commit hash.
   help      Show this help.

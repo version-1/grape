@@ -99,6 +99,71 @@ func TestCommandClientPushUsesExactArguments(t *testing.T) {
 	}
 }
 
+func TestCommandClientStartBranchSynchronizesDefaultBeforeCreatingBranch(t *testing.T) {
+	var calls [][]string
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+		calls = append(calls, append([]string(nil), args...))
+		switch {
+		case slices.Equal(args, []string{"show-ref", "--verify", "--quiet", "refs/heads/feat/example"}):
+			return commandExitError(1)
+		case slices.Equal(args, []string{"rev-parse", "--git-path", "rebase-merge/head-name"}), slices.Equal(args, []string{"rev-parse", "--git-path", "rebase-apply/head-name"}):
+			_, _ = io.WriteString(stdout, filepath.Join(t.TempDir(), "missing"))
+		case slices.Equal(args, []string{"rev-parse", "--verify", "--quiet", "MERGE_HEAD"}), slices.Equal(args, []string{"rev-parse", "--verify", "--quiet", "CHERRY_PICK_HEAD"}), slices.Equal(args, []string{"rev-parse", "--verify", "--quiet", "REVERT_HEAD"}):
+			return commandExitError(1)
+		}
+		return nil
+	}}
+
+	if err := client.StartBranch(context.Background(), "main", "feat/example", io.Discard, io.Discard); err != nil {
+		t.Fatalf("StartBranch() error = %v", err)
+	}
+	wantTail := [][]string{
+		{"fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"},
+		{"rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"},
+		{"rev-parse", "--verify", "--quiet", "refs/heads/main"},
+		{"merge-base", "--is-ancestor", "refs/heads/main", "refs/remotes/origin/main"},
+		{"switch", "main"},
+		{"merge", "--ff-only", "refs/remotes/origin/main"},
+		{"switch", "-c", "feat/example", "refs/heads/main"},
+	}
+	if !slices.EqualFunc(calls[len(calls)-len(wantTail):], wantTail, slices.Equal[[]string]) {
+		t.Fatalf("tail calls = %#v, want %#v", calls[len(calls)-len(wantTail):], wantTail)
+	}
+}
+
+func TestCommandClientStartBranchRejectsDirtyWorktreeBeforeFetch(t *testing.T) {
+	var calls [][]string
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+		calls = append(calls, append([]string(nil), args...))
+		if slices.Equal(args, []string{"status", "--porcelain", "--untracked-files=all"}) {
+			_, _ = io.WriteString(stdout, "?? draft.md\\n")
+		}
+		return nil
+	}}
+
+	err := client.StartBranch(context.Background(), "main", "feat/example", io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "uncommitted or untracked") {
+		t.Fatalf("StartBranch() error = %v, want dirty worktree error", err)
+	}
+	if slices.ContainsFunc(calls, func(args []string) bool { return args[0] == "fetch" }) {
+		t.Fatal("fetch ran for a dirty worktree")
+	}
+}
+
+func TestCommandClientRemoteDefaultBranchParsesOriginHead(t *testing.T) {
+	client := CommandClient{RunCommand: func(_ context.Context, args []string, _ io.Reader, stdout io.Writer, _ io.Writer) error {
+		if !slices.Equal(args, []string{"ls-remote", "--symref", "origin", "HEAD"}) {
+			t.Fatalf("args = %#v", args)
+		}
+		_, _ = io.WriteString(stdout, "ref: refs/heads/trunk\tHEAD\nabc\tHEAD\n")
+		return nil
+	}}
+	branch, err := client.RemoteDefaultBranch(context.Background())
+	if err != nil || branch != "trunk" {
+		t.Fatalf("RemoteDefaultBranch() = (%q, %v), want (trunk, nil)", branch, err)
+	}
+}
+
 func TestCommandClientRemoveWorktreeUsesExactArguments(t *testing.T) {
 	tests := []struct {
 		name  string

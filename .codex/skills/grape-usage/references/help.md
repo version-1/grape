@@ -14,4 +14,8 @@ The command list includes:
 
 ```text
 grape rebase [--config|-c <path>] [--] [<git-rebase-args>...]
+grape start-feat|sf <branch-name>
+grape start-docs|sd <branch-name>
+grape start-refactor|sr <branch-name>
+grape start-test|st <branch-name>
 ```

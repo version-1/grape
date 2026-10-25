@@ -45,41 +45,45 @@ func (e fakeExitError) ExitCode() int {
 }
 
 type fakeClient struct {
-	mu              sync.Mutex
-	worktrees       []worktree.Worktree
-	branches        []string
-	rawBranches     string
-	branchListErr   error
-	branchLists     int
-	defaultBranch   string
-	listErr         error
-	removeErr       error
-	deleteErr       error
-	addErr          error
-	gitStdout       string
-	gitStderr       string
-	removed         []string
-	removedForce    []bool
-	deleted         []string
-	added           []worktree.ConfiguredItem
-	addedDefaults   []string
-	currentBranch   string
-	rebaseBranch    string
-	rebaseBranchErr error
-	originURL       string
-	validateErr     error
-	pushErr         error
-	pushedBranch    string
-	pushedForce     bool
-	rebaseErr       error
-	rebaseArgs      []string
-	rebaseStdin     io.Reader
-	rebaseStdout    io.Writer
-	rebaseStderr    io.Writer
-	gitCalls        []string
-	removeHook      func(string)
-	addHook         func(worktree.ConfiguredItem)
-	deleteHook      func([]string)
+	mu                  sync.Mutex
+	worktrees           []worktree.Worktree
+	branches            []string
+	rawBranches         string
+	branchListErr       error
+	branchLists         int
+	defaultBranch       string
+	remoteDefaultBranch string
+	startErr            error
+	startedDefault      string
+	startedBranch       string
+	listErr             error
+	removeErr           error
+	deleteErr           error
+	addErr              error
+	gitStdout           string
+	gitStderr           string
+	removed             []string
+	removedForce        []bool
+	deleted             []string
+	added               []worktree.ConfiguredItem
+	addedDefaults       []string
+	currentBranch       string
+	rebaseBranch        string
+	rebaseBranchErr     error
+	originURL           string
+	validateErr         error
+	pushErr             error
+	pushedBranch        string
+	pushedForce         bool
+	rebaseErr           error
+	rebaseArgs          []string
+	rebaseStdin         io.Reader
+	rebaseStdout        io.Writer
+	rebaseStderr        io.Writer
+	gitCalls            []string
+	removeHook          func(string)
+	addHook             func(worktree.ConfiguredItem)
+	deleteHook          func([]string)
 }
 
 func (c *fakeClient) CurrentBranch(context.Context) (string, error) {
@@ -190,6 +194,18 @@ func (c *fakeClient) DefaultBranch(context.Context) (string, error) {
 	return c.defaultBranch, c.listErr
 }
 
+func (c *fakeClient) RemoteDefaultBranch(context.Context) (string, error) {
+	c.gitCalls = append(c.gitCalls, "remote-default")
+	return c.remoteDefaultBranch, c.listErr
+}
+
+func (c *fakeClient) StartBranch(_ context.Context, defaultBranch, branch string, _ io.Writer, _ io.Writer) error {
+	c.gitCalls = append(c.gitCalls, "start")
+	c.startedDefault = defaultBranch
+	c.startedBranch = branch
+	return c.startErr
+}
+
 func (c *fakeClient) AddWorktree(_ context.Context, item worktree.ConfiguredItem, defaultBranch string, stdout io.Writer, stderr io.Writer) error {
 	_, _ = io.WriteString(stdout, c.gitStdout)
 	_, _ = io.WriteString(stderr, c.gitStderr)
@@ -230,6 +246,57 @@ func TestRunDelegatesUnknownWorktreeArgs(t *testing.T) {
 	}
 	if runner.stderr != stderr {
 		t.Fatal("stderr was not passed to runner")
+	}
+}
+
+func TestRunStartCommandsCreateExpectedPrefixedBranches(t *testing.T) {
+	tests := []struct {
+		command string
+		branch  string
+	}{
+		{command: "start-feat", branch: "feat/example"},
+		{command: "start-docs", branch: "docs/example"},
+		{command: "start-refactor", branch: "refactor/example"},
+		{command: "start-test", branch: "test/example"},
+		{command: "sf", branch: "feat/example"},
+		{command: "sd", branch: "docs/example"},
+		{command: "sr", branch: "refactor/example"},
+		{command: "st", branch: "test/example"},
+	}
+	for _, test := range tests {
+		t.Run(test.command, func(t *testing.T) {
+			client := &fakeClient{remoteDefaultBranch: "main"}
+			app := New(client, &fakeRunner{}, nil)
+
+			if code := app.Run(context.Background(), []string{test.command, "example"}, nil, io.Discard, io.Discard); code != 0 {
+				t.Fatalf("code = %d, want 0", code)
+			}
+			if client.startedDefault != "main" || client.startedBranch != test.branch {
+				t.Fatalf("started = (%q, %q), want (%q, %q)", client.startedDefault, client.startedBranch, "main", test.branch)
+			}
+		})
+	}
+}
+
+func TestRunStartRejectsMissingBranchName(t *testing.T) {
+	client := &fakeClient{remoteDefaultBranch: "main"}
+	stderr := &bytes.Buffer{}
+	app := New(client, &fakeRunner{}, nil)
+
+	if code := app.Run(context.Background(), []string{"start-feat"}, nil, io.Discard, stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	if client.startedBranch != "" {
+		t.Fatalf("StartBranch was called for %q", client.startedBranch)
+	}
+}
+
+func TestRunStartPreservesClientExitCode(t *testing.T) {
+	client := &fakeClient{remoteDefaultBranch: "main", startErr: fakeExitError{code: 23}}
+	app := New(client, &fakeRunner{}, nil)
+
+	if code := app.Run(context.Background(), []string{"start-feat", "example"}, nil, io.Discard, io.Discard); code != 23 {
+		t.Fatalf("code = %d, want 23", code)
 	}
 }
 
@@ -1367,6 +1434,14 @@ func TestGlobalConfigValidationAppliesToBuiltIns(t *testing.T) {
 		{"reset"},
 		{"push"},
 		{"rebase"},
+		{"start-feat", "example"},
+		{"start-docs", "example"},
+		{"start-refactor", "example"},
+		{"start-test", "example"},
+		{"sf", "example"},
+		{"sd", "example"},
+		{"sr", "example"},
+		{"st", "example"},
 	}
 	for _, args := range tests {
 		t.Run(args[0], func(t *testing.T) {
