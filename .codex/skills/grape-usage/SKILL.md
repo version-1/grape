@@ -12,7 +12,7 @@ Explain `grape` usage accurately and concisely for the user's task.
 Before answering, read the relevant canonical command reference in [`references/`](references/README.md). Treat the relevant reference page as the source of truth for commands, flags, configuration, exit codes, and safety behavior. Do not rely on memory or duplicate its detailed specification in this skill.
 
 - For command discovery and shared running or package information, read [`README.md`](references/README.md).
-- For help, list, branch, remove, reset, push, rebase, init, and version questions, read [`help.md`](references/help.md), [`list.md`](references/list.md), [`branch.md`](references/branch.md), [`remove.md`](references/remove.md), [`reset.md`](references/reset.md), [`push.md`](references/push.md), [`rebase.md`](references/rebase.md), [`init.md`](references/init.md), or [`version.md`](references/version.md), respectively.
+- For help, list, branch, start, remove, reset, push, rebase, init, and version questions, read [`help.md`](references/help.md), [`list.md`](references/list.md), [`branch.md`](references/branch.md), [`start.md`](references/start.md), [`remove.md`](references/remove.md), [`reset.md`](references/reset.md), [`push.md`](references/push.md), [`rebase.md`](references/rebase.md), [`init.md`](references/init.md), or [`version.md`](references/version.md), respectively.
 - For shared strict configuration and color behavior, read [`config.md`](references/config.md) and [`output.md`](references/output.md).
 - For unknown or delegated commands, read [`git-worktree.md`](references/git-worktree.md).
 

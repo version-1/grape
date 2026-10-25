@@ -93,6 +93,14 @@ func (a App) Run(ctx context.Context, args []string, stdin io.Reader, stdout, st
 		return (command.PushCommand{Client: a.client, Loader: a.configLoader}).Run(ctx, args[1:], stdout, stderr, logger)
 	case "rebase":
 		return (command.RebaseCommand{Client: a.client, Loader: a.configLoader}).Run(ctx, args[1:], streams, logger)
+	case "start-feat", "sf":
+		return (command.StartCommand{Client: a.client, Loader: a.configLoader, Prefix: "feat"}).Run(ctx, args[1:], stdout, stderr, logger)
+	case "start-docs", "sd":
+		return (command.StartCommand{Client: a.client, Loader: a.configLoader, Prefix: "docs"}).Run(ctx, args[1:], stdout, stderr, logger)
+	case "start-refactor", "sr":
+		return (command.StartCommand{Client: a.client, Loader: a.configLoader, Prefix: "refactor"}).Run(ctx, args[1:], stdout, stderr, logger)
+	case "start-test", "st":
+		return (command.StartCommand{Client: a.client, Loader: a.configLoader, Prefix: "test"}).Run(ctx, args[1:], stdout, stderr, logger)
 	}
 	if err := a.runner.Run(ctx, args, stdin, stdout, stderr); err != nil {
 		if exitErr, ok := err.(exitCodeError); ok {

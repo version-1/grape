@@ -32,6 +32,7 @@ type Client interface {
 	ListBranches(context.Context) ([]string, error)
 	ListRawBranches(context.Context, io.Writer, io.Writer) error
 	DefaultBranch(context.Context) (string, error)
+	RemoteDefaultBranch(context.Context) (string, error)
 	AddWorktree(context.Context, ConfiguredItem, string, io.Writer, io.Writer) error
 	CurrentBranch(context.Context) (string, error)
 	RebaseBranch(context.Context) (string, error)
@@ -39,6 +40,7 @@ type Client interface {
 	OriginURL(context.Context) (string, error)
 	Push(context.Context, string, bool, io.Writer, io.Writer) error
 	Rebase(context.Context, []string, io.Reader, io.Writer, io.Writer) error
+	StartBranch(context.Context, string, string, io.Writer, io.Writer) error
 }
 
 type RunGitFunc func(context.Context, []string, io.Reader, io.Writer, io.Writer) error
@@ -127,6 +129,21 @@ func (c CommandClient) DefaultBranch(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), "origin/"), nil
+}
+
+func (c CommandClient) RemoteDefaultBranch(ctx context.Context) (string, error) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if err := c.run(ctx, []string{"ls-remote", "--symref", "origin", "HEAD"}, nil, stdout, stderr); err != nil {
+		return "", commandError(err, stderr)
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && fields[0] == "ref:" && fields[2] == "HEAD" && strings.HasPrefix(fields[1], "refs/heads/") {
+			return strings.TrimPrefix(fields[1], "refs/heads/"), nil
+		}
+	}
+	return "", errors.New("origin does not advertise a default branch")
 }
 
 func (c CommandClient) AddWorktree(ctx context.Context, item ConfiguredItem, defaultBranch string, stdout io.Writer, stderr io.Writer) error {

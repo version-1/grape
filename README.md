@@ -4,7 +4,7 @@
 
 `grape` is a Git wrapper designed for use by coding agents.
 
-It provides agent-friendly `git worktree` workflows, including policy-gated rebases, safe current-branch pushes, formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
+It provides agent-friendly `git worktree` workflows, including policy-gated rebases, safe current-branch pushes, prefixed branch starts, formatted worktree listing, branch lookup, prefix / regex based removal, and config-driven reset.
 
 ## Setup
 
@@ -72,6 +72,10 @@ make build
 | --- | --- |
 | `grape list` | Show worktree path, branch, and HEAD in a colored table. |
 | `grape branch <branch-name>` | Show worktrees that reference the given local branch. |
+| `grape start-feat <name>` / `grape sf <name>` | Sync the default branch and switch to `feat/<name>`. |
+| `grape start-docs <name>` / `grape sd <name>` | Sync the default branch and switch to `docs/<name>`. |
+| `grape start-refactor <name>` / `grape sr <name>` | Sync the default branch and switch to `refactor/<name>`. |
+| `grape start-test <name>` / `grape st <name>` | Sync the default branch and switch to `test/<name>`. |
 | `grape remove <prefix>` | Preview and confirm removal of worktrees under the prefix and their local branches. |
 | `grape remove --regex <pattern>` | Preview and confirm removal of worktrees whose paths match the regular expression. |
 | `grape push` | Push the current branch with `git push origin HEAD:<current-branch>`. |
